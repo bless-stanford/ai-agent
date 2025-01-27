@@ -1,7 +1,6 @@
 import os
 import discord
 import logging
-
 from discord.ext import commands
 from dotenv import load_dotenv
 from agent import MistralAgent
@@ -15,56 +14,74 @@ logger = logging.getLogger("discord")
 load_dotenv()
 
 # Create the bot with all intents
-# The message content and members intent must be enabled in the Discord Developer Portal for the bot to work.
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
 # Import the Mistral agent from the agent.py file
 agent = MistralAgent()
 
-
 # Get the token from the environment variables
 token = os.getenv("DISCORD_TOKEN")
 
+async def send_split_message(message: discord.Message, response: str | list[str]):
+    """
+    Sends a message that might be longer than Discord's character limit.
+    Handles both string and list responses from the agent.
+    """
+    try:
+        if isinstance(response, str):
+            if len(response) <= 2000:
+                await message.reply(response)
+            else:
+                # Send first chunk as reply
+                chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+                await message.reply(chunks[0])
+                # Send remaining chunks as regular messages
+                for chunk in chunks[1:]:
+                    await message.channel.send(chunk)
+        elif isinstance(response, list):
+            # Send first chunk as reply
+            if response:
+                await message.reply(response[0])
+                # Send remaining chunks as regular messages
+                for chunk in response[1:]:
+                    await message.channel.send(chunk)
+    except discord.errors.HTTPException as e:
+        error_msg = f"Error sending message: {str(e)}"
+        logger.error(error_msg)
+        await message.channel.send(error_msg[:1900])
 
 @bot.event
 async def on_ready():
     """
     Called when the client is done preparing the data received from Discord.
-    Prints message on terminal when bot successfully connects to discord.
-
-    https://discordpy.readthedocs.io/en/latest/api.html#discord.on_ready
     """
     logger.info(f"{bot.user} has connected to Discord!")
-
 
 @bot.event
 async def on_message(message: discord.Message):
     """
     Called when a message is sent in any channel the bot can see.
     """
-    # Don't delete this line! It's necessary for the bot to process commands.
+    # Process commands first
     await bot.process_commands(message)
 
-    # Ignore messages from self or other bots to prevent infinite loops.
+    # Ignore messages from self or other bots to prevent infinite loops
     if message.author.bot or message.content.startswith("!"):
         return
 
-    # Process the message with the agent you wrote
+    # Log the incoming message
     logger.info(f"Processing message from {message.author}: {message.content}")
     
-    # Show typing indicator while processing
-    async with message.channel.typing():
-        response = await agent.run(message)
-        await message.reply(response)
+    try:
+        async with message.channel.typing():
+            response = await agent.run(message)
+            await send_split_message(message, response)
+    except Exception as e:
+        error_msg = f"An error occurred while processing the message: {str(e)}"
+        logger.error(error_msg)
+        await message.channel.send(error_msg[:1900])
 
-
-# Commands
-
-
-# This example command is here to show you how to add commands to the bot.
-# Run !ping with any number of arguments to see the command in action.
-# Feel free to delete this if your project will not need commands.
 @bot.command(name="ping", help="Pings the bot.")
 async def ping(ctx, *, arg=None):
     if arg is None:
@@ -72,6 +89,5 @@ async def ping(ctx, *, arg=None):
     else:
         await ctx.send(f"Pong! Your argument was {arg}")
 
-
-# Start the bot, connecting it to the gateway
+# Start the bot
 bot.run(token)
