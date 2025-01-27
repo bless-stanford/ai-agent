@@ -42,8 +42,6 @@ async def on_ready():
 async def on_message(message: discord.Message):
     """
     Called when a message is sent in any channel the bot can see.
-
-    https://discordpy.readthedocs.io/en/latest/api.html#discord.on_message
     """
     # Don't delete this line! It's necessary for the bot to process commands.
     await bot.process_commands(message)
@@ -53,12 +51,12 @@ async def on_message(message: discord.Message):
         return
 
     # Process the message with the agent you wrote
-    # Open up the agent.py file to customize the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
-    response = await agent.run(message)
-
-    # Send the response back to the channel
-    await message.reply(response)
+    
+    # Show typing indicator while processing
+    async with message.channel.typing():
+        response = await agent.run(message)
+        await message.reply(response)
 
 
 # Commands

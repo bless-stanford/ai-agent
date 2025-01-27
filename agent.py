@@ -1,29 +1,25 @@
-import os
-from mistralai import Mistral
 import discord
+from semantic_kernel.contents import ChatHistory
+from kernel.kernel_builder import KernelBuilder
 
 MISTRAL_MODEL = "mistral-large-latest"
-SYSTEM_PROMPT = "You are a helpful assistant."
-
+SYSTEM_PROMPT = "You are a helpful assistant. Your name is Dodobot"
 
 class MistralAgent:
     def __init__(self):
-        MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-
-        self.client = Mistral(api_key=MISTRAL_API_KEY)
+        self.kernel = KernelBuilder.create_kernel(model_id=MISTRAL_MODEL)
+        self.settings = KernelBuilder.get_default_settings()
+        self.chat_service = self.kernel.get_service()
 
     async def run(self, message: discord.Message):
-        # The simplest form of an agent
-        # Send the message's content to Mistral's API and return Mistral's response
+        # Create chat history and add messages
+        chat_history = ChatHistory()
+        chat_history.add_system_message(SYSTEM_PROMPT)
+        chat_history.add_user_message(message.content)
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": message.content},
-        ]
-
-        response = await self.client.chat.complete_async(
-            model=MISTRAL_MODEL,
-            messages=messages,
+        response = await self.chat_service.get_chat_message_content(
+            chat_history=chat_history,
+            settings=self.settings
         )
-
-        return response.choices[0].message.content
+        
+        return response.content
