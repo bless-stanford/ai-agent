@@ -11,3 +11,6 @@ wheels/
 
 # Secrets
 .env
+
+user_tokens.json
+temp/
