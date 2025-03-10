@@ -1,3 +1,4 @@
+import os
 from semantic_kernel.functions import kernel_function
 from semantic_kernel.functions.kernel_function_from_prompt import KernelFunctionFromPrompt
 from services.box_service import BoxService
@@ -151,6 +152,70 @@ class BoxPlugins:
         except Exception as e:
             logger.error(f"Error deleting file: {str(e)}")
             return f"An error occurred while deleting the file: {str(e)}"
+    @kernel_function(
+        name="upload_file",
+        description="Uploads an attached file to the user's Box account"
+    )
+    async def upload_file(
+        self,
+        file_url: str,
+        file_name: str = None,
+        user_id: str = None,
+        kernel = None
+    ) -> str:
+        """
+        Uploads an attached file to the user's Box account.
+        
+        Args:
+            file_url: URL or path to the local file
+            file_name: Optional name to use when storing the file (if different from source)
+            user_id: The user's ID (automatically provided)
+            
+        Returns:
+            str: Success message with file details or error message
+        """
+        try:
+            if not user_id:
+                return "Error: User ID not available. Please try again later."
+            
+            # Create temp directory if it doesn't exist
+            if not os.path.exists("temp"):
+                os.makedirs("temp")
+            
+            # If no file name provided, use the original name from URL
+            if not file_name and file_url:
+                file_name = os.path.basename(file_url)
+            
+            # Handle the case where file is already downloaded
+            if os.path.exists(file_url):
+                local_file_path = file_url
+            else:
+                # Could add code here to download from a URL if needed
+                return "Error: File not found. Please attach a file directly to your message."
+            
+            # Upload to Box
+            file_info = await self.box_service.upload_file(user_id, local_file_path, file_name)
+            
+            # Create a response with file details
+            if file_info and 'id' in file_info:
+                response = f"✅ File '{file_name}' uploaded successfully to Box!\n"
+                response += f"**File ID:** {file_info['id']}\n"
+                
+                # Get a view link if possible
+                try:
+                    view_link = await self.box_service.get_file_view_link(user_id, file_info['id'])
+                    response += f"**View Link:** {view_link}"
+                except:
+                    # If getting a view link fails, that's okay
+                    pass
+                    
+                return response
+            else:
+                return f"File upload completed, but no file information was returned."
+            
+        except Exception as e:
+            logger.error(f"Error uploading file: {str(e)}")
+            return f"An error occurred while uploading the file: {str(e)}"
     
     @kernel_function(
         name="get_file_download_link",

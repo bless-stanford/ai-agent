@@ -6,6 +6,7 @@ from semantic_kernel.functions import KernelArguments
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
 import logging
 import json
+import os
 
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
@@ -52,6 +53,9 @@ For Dropbox:
 - Use Dropbox for personal storage needs
 - Dropbox uses file paths for operations
 - File operations focus on temporary links and direct access
+
+When a user attaches a file and asks to upload it, use the upload_file function from the Box plugins.
+You can find the attached file path in the file_paths parameter that will be provided to you.
 
 Do not use # for headers or * - for bullet points as these don't render in Discord.
 Keep responses concise when possible, as Discord has a 2000-character limit per message."""
@@ -116,7 +120,26 @@ class MistralAgent:
         original_content = message.content
         user_id = str(message.author.id)
 
-        augmented_content = f"{original_content}\n\n[system: user_id={user_id}]"
+        # Handle file attachments
+        attachment_info = ""
+        file_paths = []
+        if message.attachments:
+            # Create temp directory if it doesn't exist
+            if not os.path.exists("temp"):
+                os.makedirs("temp")
+                
+            # Download all attachments
+            for i, attachment in enumerate(message.attachments):
+                file_path = f"temp/{attachment.filename}"
+                await attachment.save(file_path)
+                file_paths.append(file_path)
+                attachment_info += f"\n[Attachment {i+1}: {attachment.filename}, path: {file_path}]"
+
+        # Add attachment info to the message
+        if attachment_info:
+            augmented_content = f"{original_content}\n\n[system: user_id={user_id}, attached_files=true]{attachment_info}"
+        else:
+            augmented_content = f"{original_content}\n\n[system: user_id={user_id}]"
 
         # Add the user's message to the chat history
         self.chat_history.add_user_message(augmented_content)
@@ -127,6 +150,12 @@ class MistralAgent:
         # Add the user ID to the kernel arguments for plugin access
         kernel_arguments = KernelArguments()
         kernel_arguments["user_id"] = user_id
+        
+        # Add file paths to the kernel arguments if there are any
+        if file_paths:
+            kernel_arguments["file_paths"] = file_paths
+            if len(file_paths) == 1:
+                kernel_arguments["file_path"] = file_paths[0]
         
         # Update user context in cloud plugin manager
         self.cloud_plugin_manager.update_user_context(self.kernel, user_id)
@@ -179,6 +208,9 @@ class MistralAgent:
                         elif "list" in func_name:
                             path = args.get("path", "root folder")
                             formatted_response = f"I'll list the contents of '{path}' in your {service_name} account..."
+                        elif "upload" in func_name:
+                            file_name = args.get("file_name", "your file")
+                            formatted_response = f"I'm uploading '{file_name}' to your {service_name} account..."
                         else:
                             formatted_response = f"I'm processing your {service_name} request..."
                         
@@ -206,6 +238,12 @@ class MistralAgent:
                     f"Please use the `!authorize-{service_name}` command to connect your account."
                 )
                 self.chat_history.add_assistant_message(error_message)
+                
+                # Clean up temporary files
+                for path in file_paths:
+                    if os.path.exists(path):
+                        os.remove(path)
+                
                 return [error_message]
             
             # Add the assistant's response to the chat history
@@ -251,6 +289,11 @@ class MistralAgent:
             # Log the response for debugging
             logger.info(f"Generated response for user {message.author.id} (length: {len(formatted_content)})")
             
+            # Clean up temporary files
+            for path in file_paths:
+                if os.path.exists(path):
+                    os.remove(path)
+            
             # Always return a list of chunks
             if len(formatted_content) > self.MAX_LENGTH:
                 return self.split_response(formatted_content)
@@ -258,6 +301,11 @@ class MistralAgent:
             
         except Exception as e:
             logger.error(f"Error processing request: {str(e)}", exc_info=True)
+            
+            # Clean up temporary files on error
+            for path in file_paths:
+                if os.path.exists(path):
+                    os.remove(path)
             
             # Check for authentication errors in the exception
             if any(phrase in str(e) for phrase in ["authorization", "authorize", "authenticate"]):
