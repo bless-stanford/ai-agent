@@ -2,6 +2,7 @@ from semantic_kernel.functions import kernel_function
 from semantic_kernel.functions.kernel_function_from_prompt import KernelFunctionFromPrompt
 from services.dropbox_service import DropboxService
 import logging
+import os
 
 logger = logging.getLogger("dropbox_plugins")
 
@@ -199,6 +200,106 @@ class DropboxPlugins:
         except Exception as e:
             logger.error(f"Error deleting file: {str(e)}")
             return f"An error occurred while deleting the file: {str(e)}"
+        
+    @kernel_function(
+        name="upload_file",
+        description="Uploads an attached file to the user's Dropbox account"
+    )
+    async def upload_file(
+        self,
+        file_url: str,
+        file_name: str = None,
+        dropbox_path: str = None,
+        user_id: str = None,
+        kernel = None
+    ) -> str:
+        """
+        Uploads an attached file to the user's Dropbox account.
+        
+        Args:
+            file_url: URL or path to the local file
+            file_name: Optional name to use when storing the file (if different from source)
+            dropbox_path: Path where to store the file in Dropbox (default: root folder)
+            user_id: The user's ID (automatically provided)
+            
+        Returns:
+            str: Success message with file details or error message
+        """
+        try:
+            if not user_id:
+                return "Error: User ID not available. Please try again later."
+            
+            # Create temp directory if it doesn't exist
+            if not os.path.exists("temp"):
+                os.makedirs("temp")
+            
+            # If no file name provided, use the original name from URL
+            if not file_name and file_url:
+                file_name = os.path.basename(file_url)
+            
+            # Handle the case where file is already downloaded
+            if os.path.exists(file_url):
+                local_file_path = file_url
+            else:
+                # Could add code here to download from a URL if needed
+                return "Error: File not found. Please attach a file directly to your message."
+            
+            # Determine the dropbox path
+            if not dropbox_path:
+                # Store in root folder if no path specified
+                dropbox_path = f"/{file_name}"
+            else:
+                # Ensure path starts with a slash
+                if not dropbox_path.startswith('/'):
+                    dropbox_path = f"/{dropbox_path}"
+                
+                # If path doesn't end with the filename, append it
+                if not dropbox_path.endswith(file_name):
+                    # Check if path ends with a slash
+                    if dropbox_path.endswith('/'):
+                        dropbox_path = f"{dropbox_path}{file_name}"
+                    else:
+                        dropbox_path = f"{dropbox_path}/{file_name}"
+            
+            # Upload to Dropbox
+            file_info = await self.dropbox_service.upload_file(user_id, local_file_path, dropbox_path)
+            
+            # Create a response with file details
+            if file_info:
+                response = f"✅ File '{file_name}' uploaded successfully to Dropbox!\n"
+                
+                # Add path information
+                path_display = file_info.get('path_display', dropbox_path)
+                response += f"**Path:** {path_display}\n"
+                
+                # Add size information if available
+                if 'size' in file_info:
+                    size_str = self._format_file_size(file_info['size'])
+                    response += f"**Size:** {size_str}\n"
+                
+                # Try to create a sharing link
+                try:
+                    sharing_info = await self.dropbox_service.share_file(user_id, path_display)
+                    shared_url = self._extract_shared_url(sharing_info)
+                    if shared_url:
+                        response += f"**Shared Link:** {shared_url}\n"
+                except Exception as share_err:
+                    logger.warning(f"Could not create sharing link: {str(share_err)}")
+                    # Try to get a temporary link instead
+                    try:
+                        temp_link = await self.dropbox_service.get_temporary_link(user_id, path_display)
+                        if temp_link:
+                            response += f"**Temporary Link:** {temp_link}\n"
+                    except Exception as temp_err:
+                        logger.warning(f"Could not create temporary link: {str(temp_err)}")
+                
+                return response
+            else:
+                return f"File upload completed, but no file information was returned."
+            
+        except Exception as e:
+            logger.error(f"Error uploading file: {str(e)}")
+            return f"An error occurred while uploading the file: {str(e)}"
     
     @kernel_function(
         name="get_file_download_link",

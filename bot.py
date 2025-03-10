@@ -157,6 +157,46 @@ async def box_upload(ctx):
         if os.path.exists(file_path):
             os.remove(file_path)
 
+@bot.command(name="dropbox-upload", help="Upload a file to Dropbox")
+async def dropbox_upload(ctx):
+    """
+    Uploads an attached file to Dropbox.
+    """
+    if not ctx.message.attachments:
+        await ctx.send("Please attach a file to upload.")
+        return
+    
+    attachment = ctx.message.attachments[0]
+    
+    # Create temp directory if it doesn't exist
+    if not os.path.exists("temp"):
+        os.makedirs("temp")
+    
+    # Download the attachment
+    file_path = f"temp/{attachment.filename}"
+    await attachment.save(file_path)
+    
+    try:
+        # Upload to Dropbox
+        dropbox_service = DropboxService()
+        dropbox_path = f"/{attachment.filename}"  # Will be stored in root folder
+        file_info = await dropbox_service.upload_file(str(ctx.author.id), file_path, dropbox_path)
+        
+        # Send confirmation
+        await ctx.send(f"File uploaded to Dropbox! Path: {file_info['path_display']}")
+        
+        # Clean up temp file
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception as e:
+        error_msg = f"Error uploading file: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+        
+        # Clean up temp file on error too
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
 @bot.command(name="authorize-dropbox", help="Authorize the bot to access your Dropbox account")
 async def authorize_dropbox(ctx):
     """
