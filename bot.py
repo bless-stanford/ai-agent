@@ -5,6 +5,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from agent import MistralAgent
 from services.box_service import BoxService
+from services.dropbox_service import DropboxService
 from server import start_server 
 
 PREFIX = "!"
@@ -22,11 +23,15 @@ load_dotenv()
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-# Initialize agent with Semantic Kernel and Box plugins
+# Initialize agent with Semantic Kernel and cloud storage plugins
 agent = MistralAgent()
 
 # Get the token from the environment variables
 token = os.getenv("DISCORD_TOKEN")
+
+# Initialize cloud service instances
+box_service = BoxService()
+dropbox_service = DropboxService()
 
 async def send_split_message(message: discord.Message, response: str | list[str]):
     """
@@ -81,7 +86,7 @@ async def on_message(message: discord.Message):
     try:
         async with message.channel.typing():
             # The agent will now use Semantic Kernel to process natural language
-            # requests related to Box, without requiring specific commands
+            # requests related to cloud storage, without requiring specific commands
             response = await agent.run(message)
             await send_split_message(message, response)
     except Exception as e:
@@ -102,9 +107,6 @@ async def authorize_box(ctx):
     Sends a Box authorization link to the user via DM.
     """
     try:
-        # Create Box service
-        box_service = BoxService()
-        
         # Get authorization URL for the user
         auth_url = await box_service.get_authorization_url(str(ctx.author.id))
         
@@ -112,7 +114,7 @@ async def authorize_box(ctx):
         await ctx.author.send(f"Please authorize access to your Box account by clicking this link: {auth_url}")
         await ctx.send("I've sent you a DM with the authorization link!")
     except Exception as e:
-        error_msg = f"Error generating authorization link: {str(e)}"
+        error_msg = f"Error generating Box authorization link: {str(e)}"
         logger.error(error_msg)
         await ctx.send(error_msg[:1900])
 
@@ -154,6 +156,86 @@ async def box_upload(ctx):
         # Clean up temp file on error too
         if os.path.exists(file_path):
             os.remove(file_path)
+
+@bot.command(name="authorize-dropbox", help="Authorize the bot to access your Dropbox account")
+async def authorize_dropbox(ctx):
+    """
+    Sends a Dropbox authorization link to the user via DM.
+    """
+    try:
+        # Get authorization URL for the user
+        auth_url = await dropbox_service.get_authorization_url(str(ctx.author.id))
+        
+        # Send the URL as a DM to the user
+        await ctx.author.send(f"Please authorize access to your Dropbox account by clicking this link: {auth_url}")
+        await ctx.send("I've sent you a DM with the authorization link!")
+    except Exception as e:
+        error_msg = f"Error generating Dropbox authorization link: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
+@bot.command(name="cloud-status", help="Check your cloud service connections")
+async def cloud_status(ctx):
+    """
+    Checks and reports the connection status for configured cloud services.
+    """
+    embed = discord.Embed(
+        title="Cloud Services Status",
+        description="Current status of your connected cloud services",
+        color=discord.Color.blue()
+    )
+    
+    embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+    embed.set_footer(text="Use !authorize-box or !authorize-dropbox to connect services")
+    embed.timestamp = discord.utils.utcnow()
+    
+    # Check Box connection
+    try:
+        # Try to load the token to see if the user is authenticated
+        box_token = await box_service._load_token(str(ctx.author.id))
+        if box_token:
+            embed.add_field(
+                name="Box Status", 
+                value="✅ Connected", 
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="Box Status", 
+                value="❌ Not connected\n*Use !authorize-box to connect*", 
+                inline=False
+            )
+    except Exception as e:
+        embed.add_field(
+            name="Box Status", 
+            value=f"⚠️ Error checking connection\n```{str(e)}```", 
+            inline=False
+        )
+    
+    # Check Dropbox connection
+    try:
+        # Try to load the token to see if the user is authenticated
+        dropbox_token = await dropbox_service._load_token(str(ctx.author.id))
+        if dropbox_token:
+            embed.add_field(
+                name="Dropbox Status", 
+                value="✅ Connected", 
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="Dropbox Status", 
+                value="❌ Not connected\n*Use !authorize-dropbox to connect*", 
+                inline=False
+            )
+    except Exception as e:
+        embed.add_field(
+            name="Dropbox Status", 
+            value=f"⚠️ Error checking connection\n```{str(e)}```", 
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
 
 # Start the web server in the background
 server_thread = start_server(bot)

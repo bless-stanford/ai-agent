@@ -2,12 +2,15 @@ import discord
 import re
 from semantic_kernel.contents import ChatHistory
 from kernel.kernel_builder import KernelBuilder
-from services.box_service import BoxService
-from plugins.box_plugin import BoxPlugins
 from semantic_kernel.functions import KernelArguments
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
 import logging
 import json
+
+from services.box_service import BoxService
+from services.dropbox_service import DropboxService
+
+from plugins.cloud_plugin_manager import CloudPluginManager
 
 logger = logging.getLogger("agent")
 
@@ -17,6 +20,7 @@ You can interact with services like Box, Dropbox, Gmail, and others to search fo
 
 When a user asks about files, folders, or cloud storage, use the appropriate function to handle their request.
 Never ask the user for their user ID, as it is automatically provided by the system.
+Do not expose implementation, internal values or functions to the user
 
 For download and view links, always format your response consistently like this:
 1. Start with a brief confirmation message (e.g., "Here is the download link for [filename]:")
@@ -35,6 +39,20 @@ Format your responses using Discord-compatible Markdown:
 - Use > for quotes
 - Use ||text|| for spoilers
 
+When deciding which cloud service to use (Box or Dropbox), base your decision on:
+1. If the user specifically mentions a service by name, use that service
+2. If the user doesn't specify, use the service that appears to be more appropriate for their needs or the one they've used most recently
+
+For Box:
+- Use Box for enterprise-focused needs
+- Box uses folder IDs and file IDs for operations
+- File operations focus on sharing with specific permissions
+
+For Dropbox:
+- Use Dropbox for personal storage needs
+- Dropbox uses file paths for operations
+- File operations focus on temporary links and direct access
+
 Do not use # for headers or * - for bullet points as these don't render in Discord.
 Keep responses concise when possible, as Discord has a 2000-character limit per message."""
 
@@ -52,10 +70,22 @@ class MistralAgent:
         self.MAX_LENGTH = 1900  # Leave room for extra characters
         self.max_context_messages = max_context_messages
         
-        # Register Box plugins with the kernel
+        # Initialize cloud services
         self.box_service = BoxService()
-        self.box_plugins = BoxPlugins(self.box_service)
-        self.kernel.add_plugin(self.box_plugins, "Box")
+        self.dropbox_service = DropboxService()
+        
+        # Initialize plugin manager and register plugins
+        self.cloud_plugin_manager = CloudPluginManager(
+            box_service=self.box_service,
+            dropbox_service=self.dropbox_service
+        )
+        
+        # Register all cloud plugins with the kernel
+        self.cloud_plugin_manager.register_plugins(self.kernel)
+        
+        # Add plugin descriptions to chat history to help the model understand available functions
+        plugin_descriptions = self.cloud_plugin_manager.get_plugin_descriptions()
+        self.chat_history.add_system_message(plugin_descriptions)
 
     def _trim_chat_history(self):
         """Keep only the most recent messages within the context window."""
@@ -98,6 +128,9 @@ class MistralAgent:
         kernel_arguments = KernelArguments()
         kernel_arguments["user_id"] = user_id
         
+        # Update user context in cloud plugin manager
+        self.cloud_plugin_manager.update_user_context(self.kernel, user_id)
+        
         # Log the user ID to verify it's correct
         logger.info(f"Setting user_id in kernel arguments to: {user_id}")
         
@@ -124,20 +157,28 @@ class MistralAgent:
                         args = func_call.get("arguments", {})
                         query = args.get("query", "")
                         
-                        # Generic handling for various services and functions
-                        service_name = func_name.split('-')[0] if '-' in func_name else ""
-                        action_type = func_name.split('-')[1] if '-' in func_name else func_name
+                        # Determine which service is being used
+                        if "box" in func_name.lower():
+                            service_name = "Box"
+                        elif "dropbox" in func_name.lower():
+                            service_name = "Dropbox"
+                        else:
+                            service_name = "cloud storage"
                         
-                        if "get_file_download_link" in action_type or "download" in action_type:
+                        # Determine action type
+                        if "get_file_download_link" in func_name or "download" in func_name:
                             formatted_response = f"I'll retrieve the download link for '{query}' from {service_name}..."
-                        elif "search" in action_type:
+                        elif "search" in func_name:
                             formatted_response = f"I'm searching for '{query}' in your {service_name} account..."
-                        elif "share" in action_type:
+                        elif "share" in func_name:
                             formatted_response = f"I'll prepare to share '{query}' from your {service_name} account..."
-                        elif "create" in action_type:
+                        elif "create" in func_name:
                             formatted_response = f"I'll create '{query}' in your {service_name} account..."
-                        elif "delete" in action_type:
+                        elif "delete" in func_name:
                             formatted_response = f"I'll prepare to delete '{query}' from your {service_name} account..."
+                        elif "list" in func_name:
+                            path = args.get("path", "root folder")
+                            formatted_response = f"I'll list the contents of '{path}' in your {service_name} account..."
                         else:
                             formatted_response = f"I'm processing your {service_name} request..."
                         
