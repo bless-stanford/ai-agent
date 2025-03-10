@@ -66,6 +66,7 @@ class TokenStorageManager:
             with open(self.storage_file, 'w') as f:
                 json.dump(tokens, f)
             
+            logger.info(f"Token stored successfully for user {user_id}")
             return True
         except Exception as e:
             logger.error(f"Error storing token: {str(e)}")
@@ -84,6 +85,7 @@ class TokenStorageManager:
             with open(self.storage_file, 'w') as f:
                 json.dump(tokens, f)
             
+            logger.info(f"Token deleted successfully for user {user_id}")
             return True
         except Exception as e:
             logger.error(f"Error deleting token: {str(e)}")
@@ -148,7 +150,9 @@ class BoxService:
         }
         
         query_string = urlencode(query)
-        return f"{BOX_AUTH_BASE_URL}authorize?{query_string}"
+        auth_url = f"{BOX_AUTH_BASE_URL}authorize?{query_string}"
+        logger.info(f"Generated authorization URL for user {user_id}")
+        return auth_url
     
     async def handle_auth_callback(self, state, code):
         """
@@ -167,6 +171,7 @@ class BoxService:
         
         # Decrypt the user_id from state
         user_id = TokenEncryptionHelper.decrypt_token(state, self.encryption_key)
+        logger.info(f"Processing authorization callback for user {user_id}")
         
         payload = {
             "grant_type": "authorization_code",
@@ -186,8 +191,10 @@ class BoxService:
                 response_data["refresh_token"], 
                 response_data["expires_in"]
             )
+            logger.info(f"Successfully obtained and stored access token for user {user_id}")
         else:
             error_msg = response_data.get("error_description", "Unknown error")
+            logger.error(f"Failed to obtain access token: {error_msg}")
             raise Exception(f"Failed to obtain user access token: {error_msg}")
     
     async def revoke_access(self, user_id):
@@ -217,7 +224,9 @@ class BoxService:
         if response.status_code == 200:
             # Delete the token from storage
             self.token_storage.delete_token(user_id, PLATFORM, SERVICE)
+            logger.info(f"Successfully revoked access for user {user_id}")
         else:
+            logger.error(f"Failed to revoke token: {response.status_code}")
             raise Exception(f"Failed to revoke token: {response.status_code}")
     
     async def create_folder(self, user_id, folder_name, parent_folder_id="0"):
@@ -234,7 +243,7 @@ class BoxService:
         """
         token = await self._load_token(user_id)
         if not token:
-            raise Exception("Failed to load a valid token")
+            raise self._create_auth_exception(user_id)
         
         headers = {
             "Authorization": f"Bearer {token}",
@@ -255,8 +264,7 @@ class BoxService:
         if response.status_code in (200, 201):
             return response.json()
         else:
-            error_msg = response.json().get("message", "Unknown error")
-            raise Exception(f"Box API request failed: {error_msg}")
+            self._handle_api_error(response, user_id)
     
     async def search_for_file(self, user_id, query, limit=100):
         """
@@ -272,7 +280,7 @@ class BoxService:
         """
         token = await self._load_token(user_id)
         if not token:
-            raise Exception("Failed to load a valid token")
+            raise self._create_auth_exception(user_id)
         
         headers = {
             "Authorization": f"Bearer {token}"
@@ -293,8 +301,7 @@ class BoxService:
         if response.status_code == 200:
             return response.json()
         else:
-            error_msg = response.json().get("message", "Unknown error")
-            raise Exception(f"Box API request failed: {error_msg}")
+            self._handle_api_error(response, user_id)
     
     async def delete_file(self, user_id, file_id):
         """
@@ -306,7 +313,7 @@ class BoxService:
         """
         token = await self._load_token(user_id)
         if not token:
-            raise Exception("Failed to load a valid token")
+            raise self._create_auth_exception(user_id)
         
         headers = {
             "Authorization": f"Bearer {token}"
@@ -318,12 +325,7 @@ class BoxService:
         )
         
         if response.status_code != 204:  # 204 No Content is success
-            error_msg = "Unknown error"
-            try:
-                error_msg = response.json().get("message", "Unknown error")
-            except:
-                pass
-            raise Exception(f"Box API request failed: {error_msg}")
+            self._handle_api_error(response, user_id)
     
     async def upload_file(self, user_id, file_path, original_file_name, folder_id="0"):
         """
@@ -340,7 +342,7 @@ class BoxService:
         """
         token = await self._load_token(user_id)
         if not token:
-            raise Exception("Failed to load a valid token")
+            raise self._create_auth_exception(user_id)
         
         headers = {
             "Authorization": f"Bearer {token}"
@@ -366,12 +368,7 @@ class BoxService:
         if response.status_code in (200, 201):
             return response.json()['entries'][0]  # Box returns an entries array
         else:
-            error_msg = "Unknown error"
-            try:
-                error_msg = response.json().get("message", "Unknown error")
-            except:
-                pass
-            raise Exception(f"Box API request failed: {error_msg}")
+            self._handle_api_error(response, user_id)
     
     async def get_file_download_link(self, user_id, file_id):
         """
@@ -386,7 +383,7 @@ class BoxService:
         """
         token = await self._load_token(user_id)
         if not token:
-            raise Exception("Failed to load a valid token")
+            raise self._create_auth_exception(user_id)
         
         headers = {
             "Authorization": f"Bearer {token}"
@@ -402,12 +399,7 @@ class BoxService:
         if response.status_code == 302:  # Redirect status code
             return response.headers.get('Location')
         else:
-            error_msg = "Unknown error"
-            try:
-                error_msg = response.json().get("message", "Unknown error")
-            except:
-                pass
-            raise Exception(f"Box API request failed: {error_msg}")
+            self._handle_api_error(response, user_id)
     
     async def get_file_view_link(self, user_id, file_id):
         """
@@ -422,7 +414,7 @@ class BoxService:
         """
         token = await self._load_token(user_id)
         if not token:
-            raise Exception("Failed to load a valid token")
+            raise self._create_auth_exception(user_id)
         
         headers = {
             "Authorization": f"Bearer {token}",
@@ -446,8 +438,7 @@ class BoxService:
             else:
                 raise Exception("Shared link URL not found in response")
         else:
-            error_msg = response.json().get("message", "Unknown error")
-            raise Exception(f"Box API request failed: {error_msg}")
+            self._handle_api_error(response, user_id)
     
     async def share_file(self, user_id, file_id, email, role):
         """
@@ -461,7 +452,7 @@ class BoxService:
         """
         token = await self._load_token(user_id)
         if not token:
-            raise Exception("Failed to load a valid token")
+            raise self._create_auth_exception(user_id)
         
         headers = {
             "Authorization": f"Bearer {token}",
@@ -481,8 +472,7 @@ class BoxService:
         )
         
         if response.status_code not in (200, 201):
-            error_msg = response.json().get("message", "Unknown error")
-            raise Exception(f"Box API request failed: {error_msg}")
+            self._handle_api_error(response, user_id)
     
     async def _store_token(self, user_id, access_token, refresh_token, expires_in):
         """
@@ -527,7 +517,7 @@ class BoxService:
         token_record = self.token_storage.get_token(user_id, PLATFORM, SERVICE)
         
         if not token_record or not token_record.get("is_active") or token_record.get("is_revoked"):
-            logger.info("No valid token found in the storage")
+            logger.info(f"No valid token found in the storage for user {user_id}")
             return None
         
         try:
@@ -545,8 +535,15 @@ class BoxService:
             # Check if token is expired
             expires_at = token_data.get("expires_at")
             if expires_at and expires_at <= datetime.utcnow().timestamp():
-                logger.info("Token expired, attempting to refresh")
-                return await self._refresh_token(user_id, token_data.get("refresh_token"))
+                logger.info(f"Token expired for user {user_id}, attempting to refresh")
+                refresh_token = token_data.get("refresh_token")
+                if refresh_token:
+                    try:
+                        return await self._refresh_token(user_id, refresh_token)
+                    except Exception as e:
+                        logger.error(f"Error refreshing token: {str(e)}")
+                        return None
+                return None
             
             return token_data.get("access_token")
         except Exception as e:
@@ -576,6 +573,7 @@ class BoxService:
             "client_secret": self.client_secret
         }
         
+        logger.info(f"Attempting to refresh token for user {user_id}")
         response = requests.post(f"{BOX_AUTH_BASE_URL}token", data=payload)
         response_data = response.json()
         
@@ -586,7 +584,62 @@ class BoxService:
                 response_data["refresh_token"], 
                 response_data["expires_in"]
             )
+            logger.info(f"Successfully refreshed token for user {user_id}")
             return response_data["access_token"]
         else:
             error_msg = response_data.get("error_description", "Unknown error")
+            logger.error(f"Failed to refresh token: {error_msg}")
+            # If refresh fails, mark the token as revoked so we don't keep trying
+            token_record = self.token_storage.get_token(user_id, PLATFORM, SERVICE)
+            if token_record:
+                token_record["is_revoked"] = True
+                self.token_storage.store_token(user_id, PLATFORM, SERVICE, token_record)
             raise Exception(f"Failed to refresh token: {error_msg}")
+    
+    def _handle_api_error(self, response, user_id):
+        """
+        Handle API errors and check for authentication issues.
+        
+        Args:
+            response: The response object
+            user_id: The user's ID
+            
+        Raises:
+            Exception: With appropriate error message
+        """
+        try:
+            error_data = response.json()
+            error_msg = error_data.get("message", "Unknown error")
+            
+            # Check if this is an authentication error
+            if response.status_code in (401, 403):
+                # Mark token as revoked
+                token_record = self.token_storage.get_token(user_id, PLATFORM, SERVICE)
+                if token_record:
+                    token_record["is_revoked"] = True
+                    self.token_storage.store_token(user_id, PLATFORM, SERVICE, token_record)
+                
+                # Raise authentication exception
+                raise self._create_auth_exception(user_id)
+            
+            # For other errors
+            raise Exception(f"Box API request failed: {error_msg}")
+        except ValueError:
+            # Response couldn't be parsed as JSON
+            raise Exception(f"Box API request failed with status code: {response.status_code}")
+    
+    def _create_auth_exception(self, user_id):
+        """
+        Create an authentication exception with reauthorization instructions.
+        
+        Args:
+            user_id: The user's ID
+            
+        Returns:
+            Exception: With reauthorization instructions
+        """
+        # Don't try to generate an auth URL here, just return the instruction
+        return Exception(
+            "Your Box authorization has expired or is invalid. "
+            "Please use the `!authorize-box` command to reconnect your Box account."
+        )

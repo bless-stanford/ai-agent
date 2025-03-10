@@ -5,12 +5,15 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from agent import MistralAgent
 from services.box_service import BoxService
-from server import start_server  # Import the server starter
+from server import start_server 
 
 PREFIX = "!"
 
 # Setup logging
 logger = logging.getLogger("discord")
+logging.basicConfig(level=logging.INFO, 
+                    format='[%(asctime)s] %(levelname)s - %(name)s: %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
 
 # Load the environment variables
 load_dotenv()
@@ -19,6 +22,7 @@ load_dotenv()
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
+# Initialize agent with Semantic Kernel and Box plugins
 agent = MistralAgent()
 
 # Get the token from the environment variables
@@ -68,7 +72,7 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
     # Ignore messages from self or other bots to prevent infinite loops
-    if message.author.bot or message.content.startswith("!"):
+    if message.author.bot or message.content.startswith(PREFIX):
         return
 
     # Log the incoming message
@@ -76,6 +80,8 @@ async def on_message(message: discord.Message):
     
     try:
         async with message.channel.typing():
+            # The agent will now use Semantic Kernel to process natural language
+            # requests related to Box, without requiring specific commands
             response = await agent.run(message)
             await send_split_message(message, response)
     except Exception as e:
@@ -148,48 +154,6 @@ async def box_upload(ctx):
         # Clean up temp file on error too
         if os.path.exists(file_path):
             os.remove(file_path)
-
-@bot.command(name="box-create-folder", help="Create a folder in Box")
-async def box_create_folder(ctx, folder_name: str):
-    """
-    Creates a folder in Box.
-    """
-    try:
-        box_service = BoxService()
-        folder = await box_service.create_folder(str(ctx.author.id), folder_name)
-        await ctx.send(f"Folder created successfully! Folder ID: {folder['id']}")
-    except Exception as e:
-        error_msg = f"Error creating folder: {str(e)}"
-        logger.error(error_msg)
-        await ctx.send(error_msg[:1900])
-
-@bot.command(name="box-search", help="Search for files in Box")
-async def box_search(ctx, *, query: str):
-    """
-    Searches for files in Box.
-    """
-    try:
-        box_service = BoxService()
-        results = await box_service.search_for_file(str(ctx.author.id), query)
-        
-        if results and results.get('entries') and len(results['entries']) > 0:
-            files = results['entries']
-            
-            # Create a nice formatted list of the files
-            response = "**Search Results:**\n\n"
-            for i, file in enumerate(files[:10], 1):  # Limit to 10 files
-                response += f"{i}. **{file['name']}** (ID: {file['id']})\n"
-            
-            if len(files) > 10:
-                response += f"\n...and {len(files) - 10} more results."
-                
-            await ctx.send(response)
-        else:
-            await ctx.send("No files found matching your search query.")
-    except Exception as e:
-        error_msg = f"Error searching for files: {str(e)}"
-        logger.error(error_msg)
-        await ctx.send(error_msg[:1900])
 
 # Start the web server in the background
 server_thread = start_server(bot)
