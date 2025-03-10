@@ -10,6 +10,7 @@ import os
 
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
+from services.google_drive_service import GoogleDriveService
 
 from plugins.cloud_plugin_manager import CloudPluginManager
 
@@ -54,6 +55,11 @@ For Dropbox:
 - Dropbox uses file paths for operations
 - File operations focus on temporary links and direct access
 
+For Google Drive:
+- Use Google Drive for collaborative work and integration with Google Workspace
+- Google Drive uses file IDs and folder IDs for operations
+- File operations include sharing, viewing, and downloading
+
 When a user attaches a file and asks to upload it, use the upload_file function from the Box plugins.
 You can find the attached file path in the file_paths parameter that will be provided to you.
 
@@ -77,11 +83,13 @@ class MistralAgent:
         # Initialize cloud services
         self.box_service = BoxService()
         self.dropbox_service = DropboxService()
+        self.google_drive_service = GoogleDriveService()
         
         # Initialize plugin manager and register plugins
         self.cloud_plugin_manager = CloudPluginManager(
             box_service=self.box_service,
-            dropbox_service=self.dropbox_service
+            dropbox_service=self.dropbox_service,
+            google_drive_service=self.google_drive_service
         )
         
         # Register all cloud plugins with the kernel
@@ -191,6 +199,8 @@ class MistralAgent:
                             service_name = "Box"
                         elif "dropbox" in func_name.lower():
                             service_name = "Dropbox"
+                        elif "gdrive" in func_name.lower() or "google" in func_name.lower():
+                            service_name = "Google Drive"
                         else:
                             service_name = "cloud storage"
                         
@@ -225,7 +235,8 @@ class MistralAgent:
                 "needs to be authorized", 
                 "Please use the `!authorize",
                 "not authorized",
-                "authorization required"
+                "authorization required",
+                "Google Drive authorization has expired"
             ]
             
             if any(phrase in response.content for phrase in auth_error_phrases):

@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 import uvicorn
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
+from services.google_drive_service import GoogleDriveService
 from helpers.token_helpers import TokenEncryptionHelper
 import asyncio
 import logging
@@ -14,6 +15,7 @@ logger = logging.getLogger("oauth_server")
 app = FastAPI()
 box_service = BoxService()
 dropbox_service = DropboxService()
+google_drive_service = GoogleDriveService()
 
 # This will be set from bot.py
 bot = None
@@ -79,7 +81,7 @@ def get_success_html(service_name):
 
 @app.get("/")
 async def root():
-    return {"message": "OAuth Callback Server for Box and Dropbox"}
+    return {"message": "OAuth Callback Server for Box, Dropbox, and Google Drive"}
 
 @app.get("/box/callback")
 async def box_callback(code: str, state: str):
@@ -139,6 +141,36 @@ async def dropbox_callback(code: str, state: str):
         return HTMLResponse(content=html_content)
     except Exception as e:
         logger.error(f"Error in Dropbox callback: {str(e)}")
+        return {"error": str(e)}
+
+@app.get("/gdrive/callback")
+async def gdrive_callback(code: str, state: str):
+    """
+    Handle the OAuth callback from Google Drive.
+    
+    This endpoint receives the authorization code from Google Drive after a user
+    authorizes the application. It exchanges the code for access and 
+    refresh tokens, stores them securely, and notifies the user.
+    """
+    try:
+        # Get user ID from state
+        user_id = TokenEncryptionHelper.decrypt_token(state, google_drive_service.encryption_key)
+        logger.info(f"Received Google Drive callback for user {user_id}")
+        
+        # Handle the callback - this stores the tokens
+        await google_drive_service.handle_auth_callback(state, code)
+        
+        # Notify the user through Discord
+        if bot:
+            # Schedule the notification in the bot's event loop
+            asyncio.run_coroutine_threadsafe(notify_user(user_id, "Google Drive"), bot.loop)
+        
+        # Use the reusable HTML template
+        html_content = get_success_html("Google Drive")
+        
+        return HTMLResponse(content=html_content)
+    except Exception as e:
+        logger.error(f"Error in Google Drive callback: {str(e)}")
         return {"error": str(e)}
 
 async def notify_user(user_id, service_name):

@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from agent import MistralAgent
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
+from services.google_drive_service import GoogleDriveService
 from server import start_server 
 
 PREFIX = "!"
@@ -32,6 +33,7 @@ token = os.getenv("DISCORD_TOKEN")
 # Initialize cloud service instances
 box_service = BoxService()
 dropbox_service = DropboxService()
+google_drive_service = GoogleDriveService()
 
 async def send_split_message(message: discord.Message, response: str | list[str]):
     """
@@ -214,6 +216,66 @@ async def authorize_dropbox(ctx):
         logger.error(error_msg)
         await ctx.send(error_msg[:1900])
 
+@bot.command(name="authorize-gdrive", help="Authorize the bot to access your Google Drive account")
+async def authorize_gdrive(ctx):
+    """
+    Sends a Google Drive authorization link to the user via DM.
+    """
+    try:
+        # Get authorization URL for the user
+        auth_url = await google_drive_service.get_authorization_url(str(ctx.author.id))
+        
+        # Send the URL as a DM to the user
+        await ctx.author.send(f"Please authorize access to your Google Drive account by clicking this link: {auth_url}")
+        await ctx.send("I've sent you a DM with the authorization link!")
+    except Exception as e:
+        error_msg = f"Error generating Google Drive authorization link: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
+@bot.command(name="gdrive-upload", help="Upload a file to Google Drive")
+async def gdrive_upload(ctx):
+    """
+    Uploads an attached file to Google Drive.
+    """
+    if not ctx.message.attachments:
+        await ctx.send("Please attach a file to upload.")
+        return
+    
+    attachment = ctx.message.attachments[0]
+    
+    # Create temp directory if it doesn't exist
+    if not os.path.exists("temp"):
+        os.makedirs("temp")
+    
+    # Download the attachment
+    file_path = f"temp/{attachment.filename}"
+    await attachment.save(file_path)
+    
+    try:
+        # Upload to Google Drive
+        file_info = await google_drive_service.upload_file(
+            str(ctx.author.id), 
+            file_path, 
+            attachment.filename
+        )
+        
+        # Send confirmation with view link
+        view_link = file_info.get('webViewLink', 'No view link available')
+        await ctx.send(f"File uploaded to Google Drive! File ID: {file_info['id']}\nView link: {view_link}")
+        
+        # Clean up temp file
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception as e:
+        error_msg = f"Error uploading file: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+        
+        # Clean up temp file on error too
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
 @bot.command(name="cloud-status", help="Check your cloud service connections")
 async def cloud_status(ctx):
     """
@@ -271,6 +333,29 @@ async def cloud_status(ctx):
     except Exception as e:
         embed.add_field(
             name="Dropbox Status", 
+            value=f"⚠️ Error checking connection\n```{str(e)}```", 
+            inline=False
+        )
+
+    # Check Google Drive connection
+    try:
+        # Try to load the token to see if the user is authenticated
+        gdrive_token = await google_drive_service._load_token(str(ctx.author.id))
+        if gdrive_token:
+            embed.add_field(
+                name="Google Drive Status", 
+                value="✅ Connected", 
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="Google Drive Status", 
+                value="❌ Not connected\n*Use !authorize-gdrive to connect*", 
+                inline=False
+            )
+    except Exception as e:
+        embed.add_field(
+            name="Google Drive Status", 
             value=f"⚠️ Error checking connection\n```{str(e)}```", 
             inline=False
         )

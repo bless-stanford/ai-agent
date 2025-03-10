@@ -1,8 +1,10 @@
 from semantic_kernel.kernel import Kernel
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
+from services.google_drive_service import GoogleDriveService
 from plugins.box_plugin import BoxPlugins
 from plugins.dropbox_plugin import DropboxPlugins
+from plugins.google_drive_plugin import GoogleDrivePlugins
 import logging
 
 logger = logging.getLogger("cloud_plugin_manager")
@@ -10,10 +12,10 @@ logger = logging.getLogger("cloud_plugin_manager")
 class CloudPluginManager:
     """
     Manager for cloud storage plugins to use with Semantic Kernel.
-    Consolidates Box and Dropbox plugins into a single interface.
+    Consolidates Box, Dropbox, and Google Drive plugins into a single interface.
     """
     
-    def __init__(self, box_service=None, dropbox_service=None):
+    def __init__(self, box_service=None, dropbox_service=None, google_drive_service=None):
         """
         Initialize the cloud plugin manager with service instances.
         If no services are provided, new ones will be created.
@@ -21,13 +23,16 @@ class CloudPluginManager:
         Args:
             box_service: BoxService instance or None
             dropbox_service: DropboxService instance or None
+            google_drive_service: GoogleDriveService instance or None
         """
         self.box_service = box_service or BoxService()
         self.dropbox_service = dropbox_service or DropboxService()
+        self.google_drive_service = google_drive_service or GoogleDriveService()
         
         # Initialize plugin instances
         self.box_plugins = BoxPlugins(self.box_service)
         self.dropbox_plugins = DropboxPlugins(self.dropbox_service)
+        self.google_drive_plugins = GoogleDrivePlugins(self.google_drive_service)
     
     def register_plugins(self, kernel: Kernel) -> Kernel:
         """
@@ -47,6 +52,10 @@ class CloudPluginManager:
             # Register Dropbox plugins
             kernel.add_plugin(self.dropbox_plugins, "dropbox")
             logger.info("Dropbox plugins registered with kernel")
+            
+            # Register Google Drive plugins
+            kernel.add_plugin(self.google_drive_plugins, "gdrive")
+            logger.info("Google Drive plugins registered with kernel")
             
             return kernel
         except Exception as e:
@@ -80,7 +89,19 @@ class CloudPluginManager:
         descriptions += "- `dropbox.list_folder`: List files and folders in a Dropbox path\n"
         descriptions += "- `dropbox.delete_file`: Delete a file from Dropbox\n"
         descriptions += "- `dropbox.get_file_download_link`: Get a temporary download link for a Dropbox file\n"
-        descriptions += "- `dropbox.share_file`: Create a shared link for a Dropbox file\n"
+        descriptions += "- `dropbox.share_file`: Create a shared link for a Dropbox file\n\n"
+        
+        # Google Drive plugins
+        descriptions += "## Google Drive Plugins\n"
+        descriptions += "Use these to interact with your Google Drive account:\n"
+        descriptions += "- `gdrive.create_folder`: Create a new folder in Google Drive\n"
+        descriptions += "- `gdrive.search_file`: Search for files in Google Drive\n"
+        descriptions += "- `gdrive.delete_file`: Delete a file from Google Drive\n"
+        descriptions += "- `gdrive.upload_file`: Upload a file to Google Drive\n"
+        descriptions += "- `gdrive.get_file_download_link`: Get a download link for a Google Drive file\n"
+        descriptions += "- `gdrive.get_file_view_link`: Get a view link for a Google Drive file\n"
+        descriptions += "- `gdrive.share_file`: Share a Google Drive file with another user\n"
+        descriptions += "- `gdrive.move_file`: Move a file to a different folder in Google Drive\n"
         
         return descriptions
     
