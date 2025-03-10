@@ -12,14 +12,18 @@ import json
 logger = logging.getLogger("agent")
 
 MISTRAL_MODEL = "mistral-large-latest"
-SYSTEM_PROMPT = """You are a helpful assistant named Dodobot that can access and manage a user's Box cloud storage. 
-You can search for files, create folders, get download links, view links, share files, and delete files.
-You can process natural language requests about Box files.
+SYSTEM_PROMPT = """You are a helpful assistant named Dodobot that can access and manage various cloud services.
+You can interact with services like Box, Dropbox, Gmail, and others to search for files, create folders, get download links, etc.
 
-When a user asks about Box files, folders, or cloud storage, use the appropriate Box function to handle their request.
+When a user asks about files, folders, or cloud storage, use the appropriate function to handle their request.
 Never ask the user for their user ID, as it is automatically provided by the system.
 
-If a user's Box account needs to be authorized or reauthorized, tell them to use the !authorize-box command.
+For download and view links, always format your response consistently like this:
+1. Start with a brief confirmation message (e.g., "Here is the download link for [filename]:")
+2. Then provide the actual link on a separate line
+3. Do not include raw function call data in your responses
+
+If a service needs authorization, tell the user to use the !authorize-[service] command (e.g., !authorize-box, !authorize-dropbox).
 
 Format your responses using Discord-compatible Markdown:
 - Use **bold** for emphasis
@@ -90,10 +94,8 @@ class MistralAgent:
         # Trim history before getting response
         self._trim_chat_history()
         
-        # Add the user ID to the kernel arguments for Box plugin access
+        # Add the user ID to the kernel arguments for plugin access
         kernel_arguments = KernelArguments()
-        # Store the user ID with the exact key name expected by the plugin functions
-        user_id = str(message.author.id)
         kernel_arguments["user_id"] = user_id
         
         # Log the user ID to verify it's correct
@@ -111,35 +113,119 @@ class MistralAgent:
                 arguments=kernel_arguments
             )
             
-            # Check if response content contains Box auth error
-            if "Your Box authorization has expired" in response.content or \
-               "Please use the `!authorize-box` command" in response.content:
+            # Handle raw function call responses
+            if response.content.startswith('[{"name":') and '"arguments":' in response.content:
+                try:
+                    # Try to parse it and format it nicely
+                    function_data = json.loads(response.content)
+                    if isinstance(function_data, list) and len(function_data) > 0:
+                        func_call = function_data[0]
+                        func_name = func_call.get("name", "")
+                        args = func_call.get("arguments", {})
+                        query = args.get("query", "")
+                        
+                        # Generic handling for various services and functions
+                        service_name = func_name.split('-')[0] if '-' in func_name else ""
+                        action_type = func_name.split('-')[1] if '-' in func_name else func_name
+                        
+                        if "get_file_download_link" in action_type or "download" in action_type:
+                            formatted_response = f"I'll retrieve the download link for '{query}' from {service_name}..."
+                        elif "search" in action_type:
+                            formatted_response = f"I'm searching for '{query}' in your {service_name} account..."
+                        elif "share" in action_type:
+                            formatted_response = f"I'll prepare to share '{query}' from your {service_name} account..."
+                        elif "create" in action_type:
+                            formatted_response = f"I'll create '{query}' in your {service_name} account..."
+                        elif "delete" in action_type:
+                            formatted_response = f"I'll prepare to delete '{query}' from your {service_name} account..."
+                        else:
+                            formatted_response = f"I'm processing your {service_name} request..."
+                        
+                        response.content = formatted_response
+                except Exception as parse_error:
+                    logger.error(f"Error parsing function call: {str(parse_error)}")
+                    response.content = "I'm processing your request..."
+            
+            # Check for authorization errors across different services
+            auth_error_phrases = [
+                "authorization has expired", 
+                "needs to be authorized", 
+                "Please use the `!authorize",
+                "not authorized",
+                "authorization required"
+            ]
+            
+            if any(phrase in response.content for phrase in auth_error_phrases):
+                # Extract the service name if available
+                service_match = re.search(r'!authorize-(\w+)', response.content)
+                service_name = service_match.group(1) if service_match else "service"
+                
                 error_message = (
-                    "It looks like I need access to your Box account to perform this task. "
-                    "Please use the `!authorize-box` command to connect your Box account."
+                    f"I need access to your {service_name} account to perform this task. "
+                    f"Please use the `!authorize-{service_name}` command to connect your account."
                 )
                 self.chat_history.add_assistant_message(error_message)
                 return [error_message]
-                
+            
             # Add the assistant's response to the chat history
             self.chat_history.add_assistant_message(response.content)
             
-            # Log the response for debugging (exclude sensitive data)
-            logger.info(f"Generated response for user {message.author.id} (length: {len(response.content)})")
+            # Format links consistently for better UI
+            formatted_content = response.content
             
-            # Always return a list of chunks, even for short messages
-            if len(response.content) > self.MAX_LENGTH:
-                return self.split_response(response.content)
-            return [response.content]
+            # Generic link pattern that should match most download links
+            link_pattern = r'(https?://\S+)'
+            
+            if re.search(link_pattern, formatted_content):
+                file_name = None
+                
+                # Try to extract filename from the context
+                filename_patterns = [
+                    r"file ['\"]([^'\"]+)['\"]",
+                    r"file (\S+\.\w+)",
+                    r"download link for ['\"]?([^'\"]+)['\"]?",
+                    r"link for ['\"]?([^'\"]+)['\"]?"
+                ]
+                
+                for pattern in filename_patterns:
+                    match = re.search(pattern, formatted_content, re.IGNORECASE)
+                    if match:
+                        file_name = match.group(1)
+                        break
+                
+                # If we found a filename and it looks like a proper filename with extension
+                if file_name and '.' in file_name:
+                    links = re.findall(link_pattern, formatted_content)
+                    for link in links:
+                        # Skip links that appear to be part of instructions or formatting
+                        if "!authorize" in link or "example" in link.lower():
+                            continue
+                        
+                        # Format a download button
+                        if not formatted_content.startswith("Download"):
+                            # Only insert a clear Download line if we don't already have one
+                            if "download" not in formatted_content.lower()[:50]:
+                                formatted_content = f"Download {file_name}\n\n{formatted_content}"
+            
+            # Log the response for debugging
+            logger.info(f"Generated response for user {message.author.id} (length: {len(formatted_content)})")
+            
+            # Always return a list of chunks
+            if len(formatted_content) > self.MAX_LENGTH:
+                return self.split_response(formatted_content)
+            return [formatted_content]
             
         except Exception as e:
             logger.error(f"Error processing request: {str(e)}", exc_info=True)
             
-            # Check if this is an authentication error
-            if "Box authorization has expired" in str(e) or "!authorize-box" in str(e):
+            # Check for authentication errors in the exception
+            if any(phrase in str(e) for phrase in ["authorization", "authorize", "authenticate"]):
+                service_match = re.search(r'!authorize-(\w+)', str(e))
+                service_name = service_match.group(1) if service_match else "service"
+                
                 error_message = (
-                    "I need to connect to your Box account to perform this task. "
-                    "Please use the `!authorize-box` command to authorize access."
+                    f"I need to connect to your {service_name} account to perform this task. "
+                    f"Please use the `!authorize-{service_name}` command to authorize access."
                 )
                 self.chat_history.add_assistant_message(error_message)
                 return [error_message]
