@@ -11,6 +11,7 @@ import os
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
 from services.google_drive_service import GoogleDriveService
+from services.google_calendar_service import GoogleCalendarService
 
 from plugins.cloud_plugin_manager import CloudPluginManager
 
@@ -18,9 +19,9 @@ logger = logging.getLogger("agent")
 
 MISTRAL_MODEL = "mistral-large-latest"
 SYSTEM_PROMPT = """You are a helpful assistant named Dodobot that can access and manage various cloud services.
-You can interact with services like Box, Dropbox, Gmail, and others to search for files, create folders, get download links, etc.
+You can interact with services like Box, Dropbox, Gmail, Google Drive, Google Calendar and others to search for files, create folders, get download links, manage calendars, etc.
 
-When a user asks about files, folders, or cloud storage, use the appropriate function to handle their request.
+When a user asks about files, folders, cloud storage, or calendar events, use the appropriate function to handle their request.
 Never ask the user for their user ID, as it is automatically provided by the system.
 Do not expose implementation, internal values or functions to the user
 
@@ -29,7 +30,7 @@ For download and view links, always format your response consistently like this:
 2. Then provide the actual link on a separate line
 3. Do not include raw function call data in your responses
 
-If a service needs authorization, tell the user to use the !authorize-[service] command (e.g., !authorize-box, !authorize-dropbox).
+If a service needs authorization, tell the user to use the !authorize-[service] command (e.g., !authorize-box, !authorize-dropbox, !authorize-gcalendar).
 
 Format your responses using Discord-compatible Markdown:
 - Use **bold** for emphasis
@@ -60,6 +61,11 @@ For Google Drive:
 - Google Drive uses file IDs and folder IDs for operations
 - File operations include sharing, viewing, and downloading
 
+For Google Calendar:
+- Use Google Calendar for managing events, meetings, and appointments
+- You can create calendars, add events, view upcoming events, and share events with others
+- Google Calendar uses event IDs and calendar IDs for operations
+
 When a user attaches a file and asks to upload it, use the upload_file function from the Box plugins.
 You can find the attached file path in the file_paths parameter that will be provided to you.
 
@@ -84,12 +90,14 @@ class MistralAgent:
         self.box_service = BoxService()
         self.dropbox_service = DropboxService()
         self.google_drive_service = GoogleDriveService()
+        self.google_calendar_service = GoogleCalendarService()
         
         # Initialize plugin manager and register plugins
         self.cloud_plugin_manager = CloudPluginManager(
             box_service=self.box_service,
             dropbox_service=self.dropbox_service,
-            google_drive_service=self.google_drive_service
+            google_drive_service=self.google_drive_service,
+            google_calendar_service=self.google_calendar_service
         )
         
         # Register all cloud plugins with the kernel
@@ -199,10 +207,12 @@ class MistralAgent:
                             service_name = "Box"
                         elif "dropbox" in func_name.lower():
                             service_name = "Dropbox"
-                        elif "gdrive" in func_name.lower() or "google" in func_name.lower():
+                        elif "gdrive" in func_name.lower() or "google_drive" in func_name.lower():
                             service_name = "Google Drive"
+                        elif "gcalendar" in func_name.lower() or "google_calendar" in func_name.lower():
+                            service_name = "Google Calendar"
                         else:
-                            service_name = "cloud storage"
+                            service_name = "cloud service"
                         
                         # Determine action type
                         if "get_file_download_link" in func_name or "download" in func_name:
@@ -211,13 +221,19 @@ class MistralAgent:
                             formatted_response = f"I'm searching for '{query}' in your {service_name} account..."
                         elif "share" in func_name:
                             formatted_response = f"I'll prepare to share '{query}' from your {service_name} account..."
+                        elif "create_calendar" in func_name:
+                            calendar_name = args.get("calendar_name", "new calendar")
+                            formatted_response = f"I'm creating a new calendar '{calendar_name}' in your Google Calendar account..."
+                        elif "add_event" in func_name or "create_event" in func_name:
+                            summary = args.get("summary", "event")
+                            formatted_response = f"I'm adding the event '{summary}' to your Google Calendar..."
                         elif "create" in func_name:
                             formatted_response = f"I'll create '{query}' in your {service_name} account..."
                         elif "delete" in func_name:
                             formatted_response = f"I'll prepare to delete '{query}' from your {service_name} account..."
-                        elif "list" in func_name:
+                        elif "list" in func_name or "get_events" in func_name:
                             path = args.get("path", "root folder")
-                            formatted_response = f"I'll list the contents of '{path}' in your {service_name} account..."
+                            formatted_response = f"I'll list the contents in your {service_name} account..."
                         elif "upload" in func_name:
                             file_name = args.get("file_name", "your file")
                             formatted_response = f"I'm uploading '{file_name}' to your {service_name} account..."
@@ -236,7 +252,8 @@ class MistralAgent:
                 "Please use the `!authorize",
                 "not authorized",
                 "authorization required",
-                "Google Drive authorization has expired"
+                "Google Drive authorization has expired",
+                "Google Calendar authorization has expired"
             ]
             
             if any(phrase in response.content for phrase in auth_error_phrases):
