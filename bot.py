@@ -7,7 +7,9 @@ from agent import MistralAgent
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
 from services.google_drive_service import GoogleDriveService
+from services.google_calendar_service import GoogleCalendarService
 from server import start_server 
+from datetime import datetime, timedelta
 
 PREFIX = "!"
 
@@ -34,6 +36,7 @@ token = os.getenv("DISCORD_TOKEN")
 box_service = BoxService()
 dropbox_service = DropboxService()
 google_drive_service = GoogleDriveService()
+google_calendar_service = GoogleCalendarService()
 
 async def send_split_message(message: discord.Message, response: str | list[str]):
     """
@@ -275,6 +278,26 @@ async def gdrive_upload(ctx):
         # Clean up temp file on error too
         if os.path.exists(file_path):
             os.remove(file_path)
+
+@bot.command(name="gcalendar-create", help="Create a new calendar")
+async def gcalendar_create(ctx, *, calendar_name=None):
+    """
+    Creates a new calendar in the user's Google Calendar account.
+    
+    Usage: !gcalendar-create My New Calendar
+    """
+    if not calendar_name:
+        await ctx.send("Please provide a name for the calendar.\nUsage: `!gcalendar-create My New Calendar`")
+        return
+    
+    try:
+        calendar_id = await google_calendar_service.create_calendar(str(ctx.author.id), calendar_name)
+        
+        await ctx.send(f"Calendar created successfully!\nName: {calendar_name}\nID: {calendar_id}")
+    except Exception as e:
+        error_msg = f"Error creating calendar: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
 
 @bot.command(name="cloud-status", help="Check your cloud service connections")
 async def cloud_status(ctx):
