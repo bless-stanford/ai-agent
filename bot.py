@@ -259,6 +259,23 @@ async def authorize_gmail(ctx):
         logger.error(error_msg)
         await ctx.send(error_msg[:1900])
 
+@bot.command(name="authorize-gcalendar", help="Authorize the bot to access your Google Calendar account")
+async def authorize_gcalendar(ctx):
+    """
+    Sends a Google Calendar authorization link to the user via DM.
+    """
+    try:
+        # Get authorization URL for the user
+        auth_url = await google_calendar_service.get_authorization_url(str(ctx.author.id))
+        
+        # Send the URL as a DM to the user
+        await ctx.author.send(f"Please authorize access to your Google Calendar account by clicking this link: {auth_url}")
+        await ctx.send("I've sent you a DM with the authorization link!")
+    except Exception as e:
+        error_msg = f"Error generating Google Calendar authorization link: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
 @bot.command(name="gdrive-upload", help="Upload a file to Google Drive")
 async def gdrive_upload(ctx):
     """
