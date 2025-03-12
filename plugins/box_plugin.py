@@ -20,7 +20,7 @@ class BoxPlugins:
     
     @kernel_function(
         name="create_folder",
-        description="Creates a new folder in the user's Box account"
+        description="Creates a new Box folder"
     )
     async def create_folder(
         self,
@@ -57,7 +57,7 @@ class BoxPlugins:
     
     @kernel_function(
         name="search_file",
-        description="Searches for files in the user's Box account and returns details in a user friendly way"
+        description="Searches for files Box account. Returns details in user friendly way"
     )
     async def search_file(
         self,
@@ -102,7 +102,7 @@ class BoxPlugins:
     
     @kernel_function(
         name="delete_file",
-        description="Searches and deletes a file from the user's Box account"
+        description="Searches and deletes file from Box account"
     )
     async def delete_file(
         self,
@@ -154,7 +154,7 @@ class BoxPlugins:
             return f"An error occurred while deleting the file: {str(e)}"
     @kernel_function(
         name="upload_file",
-        description="Uploads an attached file to the user's Box account"
+        description="Uploads attached file to the user's Box account"
     )
     async def upload_file(
         self,
@@ -219,7 +219,7 @@ class BoxPlugins:
     
     @kernel_function(
         name="get_file_download_link",
-        description="Gets a download link for a file in the user's Box account"
+        description="Gets download link for file in Box account"
     )
     async def get_file_download_link(
         self,
@@ -272,7 +272,7 @@ class BoxPlugins:
     
     @kernel_function(
         name="get_file_view_link",
-        description="Gets a shareable view link for a file in the user's Box account"
+        description="Gets shareable view link for file in Box account"
     )
     async def get_file_view_link(
         self,

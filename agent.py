@@ -49,29 +49,6 @@ When deciding which cloud service to use (Box or Dropbox), base your decision on
 1. If the user specifically mentions a service by name, use that service
 2. If the user doesn't specify, use the service that appears to be more appropriate for their needs or the one they've used most recently
 
-For Box:
-- Use Box for enterprise-focused needs
-- Box uses folder IDs and file IDs for operations
-- File operations focus on sharing with specific permissions
-
-For Dropbox:
-- Use Dropbox for personal storage needs
-- Dropbox uses file paths for operations
-- File operations focus on temporary links and direct access
-
-For Google Drive:
-- Use Google Drive for collaborative work and integration with Google Workspace
-- Google Drive uses file IDs and folder IDs for operations
-- File operations include sharing, viewing, and downloading
-
-For Google Calendar:
-- Use Google Calendar for managing events, meetings, and appointments
-- You can create calendars, add events, view upcoming events, and share events with others
-- Google Calendar uses event IDs and calendar IDs for operations
-
-When a user attaches a file and asks to upload it, use the upload_file function from the Box plugins.
-You can find the attached file path in the file_paths parameter that will be provided to you.
-
 Do not use # for headers or * - for bullet points as these don't render in Discord.
 Keep responses concise when possible, as Discord has a 2000-character limit per message."""
 
