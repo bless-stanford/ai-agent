@@ -14,6 +14,7 @@ from services.box_service import BoxService
 from services.dropbox_service import DropboxService
 from services.google_drive_service import GoogleDriveService
 from services.gmail_service import GmailService
+from services.google_calendar_service import GoogleCalendarService
 
 from plugins.cloud_plugin_manager import CloudPluginManager
 
@@ -23,6 +24,7 @@ MISTRAL_MODEL = "mistral-large-latest"
 SYSTEM_PROMPT = """You are a helpful assistant named Dodobot that can access and manage various cloud services.
 You can interact with services like Box, Dropbox, Gmail, Google Drive, Google Calendar and others to search for files, create folders, get download links, manage calendars, etc.
 
+When a user asks about files, folders, cloud storage, or calendar events, use the appropriate function to handle their request.
 Never ask the user for their user ID, as it is automatically provided by the system.
 Do not expose implementation, internal values or functions to the user
 
@@ -31,7 +33,7 @@ For download and view links, always format your response consistently like this:
 2. Then provide the actual link on a separate line
 3. Do not include raw function call data in your responses
 
-If a service needs authorization, tell the user to use the !authorize-[service] command (e.g., !authorize-box).
+If a service needs authorization, tell the user to use the !authorize-[service] command (e.g., !authorize-box, !authorize-dropbox, !authorize-gcalendar).
 
 Format your responses using Discord-compatible Markdown:
 - Use **bold** for emphasis
@@ -42,6 +44,33 @@ Format your responses using Discord-compatible Markdown:
   ``` for multi-line code (where 'language' is python, javascript, etc)
 - Use > for quotes
 - Use ||text|| for spoilers
+
+When deciding which cloud service to use (Box or Dropbox), base your decision on:
+1. If the user specifically mentions a service by name, use that service
+2. If the user doesn't specify, use the service that appears to be more appropriate for their needs or the one they've used most recently
+
+For Box:
+- Use Box for enterprise-focused needs
+- Box uses folder IDs and file IDs for operations
+- File operations focus on sharing with specific permissions
+
+For Dropbox:
+- Use Dropbox for personal storage needs
+- Dropbox uses file paths for operations
+- File operations focus on temporary links and direct access
+
+For Google Drive:
+- Use Google Drive for collaborative work and integration with Google Workspace
+- Google Drive uses file IDs and folder IDs for operations
+- File operations include sharing, viewing, and downloading
+
+For Google Calendar:
+- Use Google Calendar for managing events, meetings, and appointments
+- You can create calendars, add events, view upcoming events, and share events with others
+- Google Calendar uses event IDs and calendar IDs for operations
+
+When a user attaches a file and asks to upload it, use the upload_file function from the Box plugins.
+You can find the attached file path in the file_paths parameter that will be provided to you.
 
 Do not use # for headers or * - for bullet points as these don't render in Discord.
 Keep responses concise when possible, as Discord has a 2000-character limit per message."""
@@ -65,13 +94,15 @@ class MistralAgent:
         self.dropbox_service = DropboxService()
         self.google_drive_service = GoogleDriveService()
         self.gmail_service = GmailService()
+        self.google_calendar_service = GoogleCalendarService()
         
         # Initialize plugin manager and register plugins
         self.cloud_plugin_manager = CloudPluginManager(
             box_service=self.box_service,
             dropbox_service=self.dropbox_service,
             google_drive_service=self.google_drive_service,
-            gmail_service=self.gmail_service
+            gmail_service=self.gmail_service,
+            google_calendar_service=self.google_calendar_service
         )
         
         # Register all cloud plugins with the kernel
@@ -333,6 +364,8 @@ class MistralAgent:
                             service_name = "Google Drive"
                         elif "gmail" in func_name.lower() or "email" in func_name.lower():
                             service_name = "Gmail"
+                        elif "gcalendar" in func_name.lower() or "google_calendar" in func_name.lower():
+                            service_name = "Google Calendar"
                         else:
                             service_name = "cloud service"
                         
@@ -390,7 +423,8 @@ class MistralAgent:
                 "not authorized",
                 "authorization required",
                 "Google Drive authorization has expired",
-                "Gmail authorization has expired"
+                "Gmail authorization has expired",
+                "Google Calendar authorization has expired"
             ]
             
             if any(phrase in response.content for phrase in auth_error_phrases):
