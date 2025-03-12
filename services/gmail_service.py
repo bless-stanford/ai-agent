@@ -543,6 +543,36 @@ class GmailService:
         except Exception as e:
             logger.error(f"Error getting token data: {str(e)}")
             return None
+        
+    async def _load_token(self, user_id):
+        """
+        Load a token from the token storage.
+        
+        Args:
+            user_id: The user's ID
+            
+        Returns:
+            str: The access token, or None if not found or expired
+        """
+        token_data = await self._get_token_data(user_id)
+        
+        if not token_data:
+            return None
+        
+        # Check if token is expired
+        expires_at = token_data.get("expires_at")
+        if expires_at and expires_at <= datetime.utcnow().timestamp():
+            logger.info(f"Token expired for user {user_id}, attempting to refresh")
+            refresh_token = token_data.get("refresh_token")
+            if refresh_token:
+                try:
+                    return await self._refresh_token(user_id, refresh_token)
+                except Exception as e:
+                    logger.error(f"Error refreshing token: {str(e)}")
+                    return None
+            return None
+        
+        return token_data.get("access_token")
     
     async def _refresh_token(self, user_id, refresh_token):
         """
