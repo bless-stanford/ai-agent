@@ -13,3 +13,4 @@ aiohttp
 httpx
 pydantic
 pydantic-settings
+azure-storage-blob
