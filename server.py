@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 import uvicorn
@@ -258,24 +259,15 @@ async def notify_user(user_id, service_name):
 
 def start_server(bot_instance=None):
     """
-    Start the FastAPI server in a background thread.
-    
-    Args:
-        bot_instance: The Discord bot instance, used for user notifications
-    
-    Returns:
-        thread: The thread running the server
+    Start the FastAPI server using the port provided by Azure (if available).
     """
-    global bot
-    bot = bot_instance
-    
-    # Start the server in a separate thread
+    port = int(os.environ.get("PORT", 8000))
+    host = "0.0.0.0"
+
     def run_server():
-        logger.info("Starting OAuth callback server on port 8000")
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
-    
+        uvicorn.run(app, host=host, port=port, log_level="info")
+
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
-    logger.info("Server thread started")
-    
+    print(f"Server running on {host}:{port}")
     return server_thread
