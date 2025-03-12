@@ -205,6 +205,42 @@ async def gmail_callback(code: str, state: str):
         logger.error(f"Error in Gmail callback: {str(e)}")
         return {"error": str(e)}
 
+# Add this import at the top with the other imports
+from services.google_calendar_service import GoogleCalendarService
+
+# Add this after other service initializations
+google_calendar_service = GoogleCalendarService()
+
+@app.get("/gcalendar/callback")
+async def gcalendar_callback(code: str, state: str):
+    """
+    Handle the OAuth callback from Google Calendar.
+    
+    This endpoint receives the authorization code from Google Calendar after a user
+    authorizes the application. It exchanges the code for access and 
+    refresh tokens, stores them securely, and notifies the user.
+    """
+    try:
+        # Get user ID from state
+        user_id = TokenEncryptionHelper.decrypt_token(state, google_calendar_service.encryption_key)
+        logger.info(f"Received Google Calendar callback for user {user_id}")
+        
+        # Handle the callback - this stores the tokens
+        await google_calendar_service.handle_auth_callback(state, code)
+        
+        # Notify the user through Discord
+        if bot:
+            # Schedule the notification in the bot's event loop
+            asyncio.run_coroutine_threadsafe(notify_user(user_id, "Google Calendar"), bot.loop)
+        
+        # Use the reusable HTML template
+        html_content = get_success_html("Google Calendar")
+        
+        return HTMLResponse(content=html_content)
+    except Exception as e:
+        logger.error(f"Error in Google Calendar callback: {str(e)}")
+        return {"error": str(e)}
+
 async def notify_user(user_id, service_name):
     """
     Send a Discord message to notify the user that authorization was successful.
