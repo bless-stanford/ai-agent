@@ -2,27 +2,25 @@ from semantic_kernel.kernel import Kernel
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
 from services.google_drive_service import GoogleDriveService
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
+
 from services.google_calendar_service import GoogleCalendarService
 from plugins.box_plugin import BoxPlugins
 from plugins.dropbox_plugin import DropboxPlugins
 from plugins.google_drive_plugin import GoogleDrivePlugins
 from plugins.google_calendar_plugin import GoogleCalendarPlugins
-=======
+
 from services.gmail_service import GmailService
 from plugins.box_plugin import BoxPlugins
 from plugins.dropbox_plugin import DropboxPlugins
 from plugins.google_drive_plugin import GoogleDrivePlugins
 from plugins.gmail_plugin import GmailPlugins
->>>>>>> Stashed changes
-=======
+
 from services.gmail_service import GmailService
 from plugins.box_plugin import BoxPlugins
 from plugins.dropbox_plugin import DropboxPlugins
 from plugins.google_drive_plugin import GoogleDrivePlugins
 from plugins.gmail_plugin import GmailPlugins
->>>>>>> Stashed changes
+
 import logging
 
 logger = logging.getLogger("cloud_plugin_manager")
@@ -33,15 +31,7 @@ class CloudPluginManager:
     Consolidates Box, Dropbox, Google Drive, and Gmail plugins into a single interface.
     """
     
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-    def __init__(self, box_service=None, dropbox_service=None, google_drive_service=None, google_calendar_service=None):
-=======
-    def __init__(self, box_service=None, dropbox_service=None, google_drive_service=None, gmail_service=None):
->>>>>>> Stashed changes
-=======
-    def __init__(self, box_service=None, dropbox_service=None, google_drive_service=None, gmail_service=None):
->>>>>>> Stashed changes
+    def __init__(self, box_service=None, dropbox_service=None, google_drive_service=None, google_calendar_service=None, gmail_service=None):
         """
         Initialize the cloud plugin manager with service instances.
         If no services are provided, new ones will be created.
@@ -50,43 +40,24 @@ class CloudPluginManager:
             box_service: BoxService instance or None
             dropbox_service: DropboxService instance or None
             google_drive_service: GoogleDriveService instance or None
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
             google_calendar_service: GoogleCalendarService instance or None
-=======
             gmail_service: GmailService instance or None
->>>>>>> Stashed changes
-=======
-            gmail_service: GmailService instance or None
->>>>>>> Stashed changes
         """
         self.box_service = box_service or BoxService()
         self.dropbox_service = dropbox_service or DropboxService()
         self.google_drive_service = google_drive_service or GoogleDriveService()
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
         self.google_calendar_service = google_calendar_service or GoogleCalendarService()
-        
-=======
         self.gmail_service = gmail_service or GmailService()
->>>>>>> Stashed changes
-=======
-        self.gmail_service = gmail_service or GmailService()
->>>>>>> Stashed changes
+
         
         # Initialize plugin instances
         self.box_plugins = BoxPlugins(self.box_service)
         self.dropbox_plugins = DropboxPlugins(self.dropbox_service)
         self.google_drive_plugins = GoogleDrivePlugins(self.google_drive_service)
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
         self.google_calendar_plugins = GoogleCalendarPlugins(self.google_calendar_service)
-=======
         self.gmail_plugins = GmailPlugins(self.gmail_service)
->>>>>>> Stashed changes
-=======
+
         self.gmail_plugins = GmailPlugins(self.gmail_service)
->>>>>>> Stashed changes
     
     def register_plugins(self, kernel: Kernel) -> Kernel:
         """
@@ -168,9 +139,7 @@ class CloudPluginManager:
         descriptions += "- `gdrive.get_file_view_link`: Get a view link for a Google Drive file\n"
         descriptions += "- `gdrive.share_file`: Share a Google Drive file with another user\n"
         descriptions += "- `gdrive.move_file`: Move a file to a different folder in Google Drive\n\n"
-<<<<<<< Updated upstream
-=======
-        
+
         # Gmail plugins
         descriptions += "## Gmail Plugins\n"
         descriptions += "Use these to interact with your Gmail account:\n"
@@ -184,7 +153,6 @@ class CloudPluginManager:
         descriptions += "- `gmail.search_and_summarize`: Generate AI summaries of email search results\n"
         descriptions += "- `gmail.get_authorization_url`: Get the authorization URL for Gmail\n"
         descriptions += "- `gmail.revoke_access`: Revoke the application's access to Gmail\n"
->>>>>>> Stashed changes
         
         # Gmail plugins
         descriptions += "## Gmail Plugins\n"
