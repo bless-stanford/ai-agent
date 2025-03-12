@@ -1,3 +1,4 @@
+# agent.py
 import discord
 import re
 from semantic_kernel.contents import ChatHistory
@@ -7,10 +8,12 @@ from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoic
 import logging
 import json
 import os
+from datetime import datetime, timedelta
 
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
 from services.google_drive_service import GoogleDriveService
+from services.google_calendar_service import GoogleCalendarService
 
 from plugins.cloud_plugin_manager import CloudPluginManager
 
@@ -18,9 +21,9 @@ logger = logging.getLogger("agent")
 
 MISTRAL_MODEL = "mistral-large-latest"
 SYSTEM_PROMPT = """You are a helpful assistant named Dodobot that can access and manage various cloud services.
-You can interact with services like Box, Dropbox, Gmail, and others to search for files, create folders, get download links, etc.
+You can interact with services like Box, Dropbox, Gmail, Google Drive, Google Calendar and others to search for files, create folders, get download links, manage calendars, etc.
 
-When a user asks about files, folders, or cloud storage, use the appropriate function to handle their request.
+When a user asks about files, folders, cloud storage, or calendar events, use the appropriate function to handle their request.
 Never ask the user for their user ID, as it is automatically provided by the system.
 Do not expose implementation, internal values or functions to the user
 
@@ -29,7 +32,7 @@ For download and view links, always format your response consistently like this:
 2. Then provide the actual link on a separate line
 3. Do not include raw function call data in your responses
 
-If a service needs authorization, tell the user to use the !authorize-[service] command (e.g., !authorize-box, !authorize-dropbox).
+If a service needs authorization, tell the user to use the !authorize-[service] command (e.g., !authorize-box, !authorize-dropbox, !authorize-gcalendar).
 
 Format your responses using Discord-compatible Markdown:
 - Use **bold** for emphasis
@@ -60,6 +63,11 @@ For Google Drive:
 - Google Drive uses file IDs and folder IDs for operations
 - File operations include sharing, viewing, and downloading
 
+For Google Calendar:
+- Use Google Calendar for managing events, meetings, and appointments
+- You can create calendars, add events, view upcoming events, and share events with others
+- Google Calendar uses event IDs and calendar IDs for operations
+
 When a user attaches a file and asks to upload it, use the upload_file function from the Box plugins.
 You can find the attached file path in the file_paths parameter that will be provided to you.
 
@@ -84,12 +92,14 @@ class MistralAgent:
         self.box_service = BoxService()
         self.dropbox_service = DropboxService()
         self.google_drive_service = GoogleDriveService()
+        self.google_calendar_service = GoogleCalendarService()
         
         # Initialize plugin manager and register plugins
         self.cloud_plugin_manager = CloudPluginManager(
             box_service=self.box_service,
             dropbox_service=self.dropbox_service,
-            google_drive_service=self.google_drive_service
+            google_drive_service=self.google_drive_service,
+            google_calendar_service=self.google_calendar_service
         )
         
         # Register all cloud plugins with the kernel
@@ -165,6 +175,114 @@ class MistralAgent:
             if len(file_paths) == 1:
                 kernel_arguments["file_path"] = file_paths[0]
         
+        # CALENDAR EVENT PREPROCESSING
+        # Check if this is a calendar event creation request
+        calendar_patterns = [
+            r"add (?:a )?(?:calendar )?event",
+            r"schedule (?:a )?(?:calendar )?event", 
+            r"create (?:a )?(?:calendar )?event",
+            r"add to (?:my )?calendar",
+            r"put (?:this )?(?:on|in) (?:my )?calendar"
+        ]
+        
+        is_calendar_request = any(re.search(pattern, original_content.lower()) for pattern in calendar_patterns)
+        
+        if is_calendar_request:
+            # Add preprocessing instructions to help the model format the date properly
+            # This gives the AI clearer instructions about how to handle dates
+            # Add preprocessing instructions to help the model format the date properly
+            # This gives the AI clearer instructions about how to handle dates
+            
+            # # Get current date
+            # today = datetime.now()
+            # tomorrow = today + timedelta(days=1)
+
+            # # Ensure we're working with the current year explicitly
+            # # current_year = today.year
+
+            # # Check for specific year mentions
+            # year_pattern = r'\b(20\d{2})\b'  # Matches years like 2024, 2025, etc.
+            # year_match = re.search(year_pattern, original_content)
+            # specified_year = int(year_match.group(1)) if year_match else current_year
+
+            # # Log the year detection
+            # logger.info(f"Year detection: current_year={current_year}, specified_year={specified_year}")
+
+            calendar_helper = f"""
+            [SYSTEM NOTE: This appears to be a calendar event request. Use these guidelines:
+            0. The current date is 2025-03-12
+            1. When parsing dates like "tomorrow", "next week", etc., convert them to specific dates based on the current date 
+            2. Always use YYYY-MM-DD format for dates with the current year 2025
+            3. For "tomorrow", use the day right after the specified day
+            4. For requests without a specified year, always use 2025
+            5. For times, use 24-hour format (HH:MM)
+            6. Be sure to set the start_date_time and end_date_time parameters explicitly with the year 2025
+                        """
+            
+            # calendar_helper = f"""
+            # [SYSTEM NOTE: This appears to be a calendar event request. Use these guidelines:
+            # 1. When parsing dates like "tomorrow", "next week", etc., convert them to specific dates based on the current date ({today.strftime('%B %d, %Y')})
+            # 2. Always use YYYY-MM-DD format for dates with the current year {current_year}
+            # 3. For "tomorrow", use {tomorrow.strftime('%B %d, %Y')}
+            # 4. For requests without a specified year, always use {current_year}
+            # 5. For times, use 24-hour format (HH:MM)
+            # 6. Be sure to set the start_date_time and end_date_time parameters explicitly with the year {current_year}]
+            #             """
+            # Insert into chat history
+            self.chat_history.add_system_message(calendar_helper)
+            
+            # Check for relative date terms
+            tomorrow_patterns = [r"tomorrow", r"next day"]
+            has_tomorrow = any(re.search(pattern, original_content.lower()) for pattern in tomorrow_patterns)
+            
+            # Extract the time
+            time_patterns = [
+                r"at (\d{1,2})(?::(\d{2}))?\s*(am|pm|AM|PM)?",  # matches "at 3pm", "at 3:30pm", "at 15:00"
+                r"(\d{1,2})(?::(\d{2}))?\s*(am|pm|AM|PM)"  # matches "3pm", "3:30pm"
+            ]
+            
+            event_time = None
+            for pattern in time_patterns:
+                match = re.search(pattern, original_content)
+                if match:
+                    hour = int(match.group(1))
+                    minute = int(match.group(2)) if match.group(2) else 0
+                    ampm = match.group(3).lower() if match.group(3) else None
+                    
+                    # Convert to 24-hour format
+                    if ampm == "pm" and hour < 12:
+                        hour += 12
+                    elif ampm == "am" and hour == 12:
+                        hour = 0
+                    
+                    event_time = (hour, minute)
+                    break
+            
+            # Default to noon if no time specified
+            if event_time is None:
+                event_time = (12, 0)
+            
+            # Create ISO formatted datetime strings
+            if has_tomorrow:
+                event_date = tomorrow
+            else:
+                event_date = today
+                
+            # Create datetime with the specified time
+            event_start = event_date.replace(hour=event_time[0], minute=event_time[1], second=0, microsecond=0)
+            event_end = event_start + timedelta(hours=1)  # Default to 1-hour events
+            
+            # Format as ISO 8601
+            start_iso = event_start.isoformat()
+            end_iso = event_end.isoformat()
+            
+            # Add these to the kernel arguments
+            kernel_arguments["explicit_start_time"] = start_iso
+            kernel_arguments["explicit_end_time"] = end_iso
+            
+            # Log the processed dates
+            logger.info(f"Calendar event preprocessing: Identified start={start_iso}, end={end_iso}")
+        
         # Update user context in cloud plugin manager
         self.cloud_plugin_manager.update_user_context(self.kernel, user_id)
         
@@ -183,8 +301,48 @@ class MistralAgent:
                 arguments=kernel_arguments
             )
             
+            # If this is a calendar request, we need to manually adjust the function call
+            if is_calendar_request and response.content.startswith('[{"name":') and '"arguments":' in response.content:
+                try:
+                    function_data = json.loads(response.content)
+                    if isinstance(function_data, list) and len(function_data) > 0:
+                        func_call = function_data[0]
+                        func_name = func_call.get("name", "")
+                        
+                        # If this is a calendar add_event function
+                        if "add_event" in func_name:
+                            args = func_call.get("arguments", {})
+                            
+                            # Check if we have explicit times calculated
+                            if "explicit_start_time" in kernel_arguments and "explicit_end_time" in kernel_arguments:
+                                # Override the start and end times
+                                args["start_date_time"] = kernel_arguments["explicit_start_time"]
+                                args["end_date_time"] = kernel_arguments["explicit_end_time"]
+                                
+                                # Update the function call with corrected arguments
+                                func_call["arguments"] = args
+                                function_data[0] = func_call
+                                
+                                # Execute the function call manually with the corrected data
+                                plugin_name, function_name = func_name.split('.')
+                                plugin = getattr(self.cloud_plugin_manager, f"{plugin_name}_plugins")
+                                function = getattr(plugin, function_name)
+                                
+                                # Execute with the corrected arguments
+                                result = await function(**args)
+                                
+                                # Create a proper response
+                                summary = args.get("summary", "event")
+                                response.content = f"I've added your {summary} to your calendar for tomorrow ({tomorrow.strftime('%A, %B %d, %Y')}) at {event_time[0]}:{event_time[1]:02d}. {result}"
+                                
+                                # Log the adjustment
+                                logger.info(f"Adjusted calendar event datetime: {args['start_date_time']} to {args['end_date_time']}")
+                except Exception as e:
+                    logger.error(f"Error processing calendar function call: {str(e)}", exc_info=True)
+            
+            # Rest of the function remains unchanged
             # Handle raw function call responses
-            if response.content.startswith('[{"name":') and '"arguments":' in response.content:
+            elif response.content.startswith('[{"name":') and '"arguments":' in response.content:
                 try:
                     # Try to parse it and format it nicely
                     function_data = json.loads(response.content)
@@ -199,10 +357,12 @@ class MistralAgent:
                             service_name = "Box"
                         elif "dropbox" in func_name.lower():
                             service_name = "Dropbox"
-                        elif "gdrive" in func_name.lower() or "google" in func_name.lower():
+                        elif "gdrive" in func_name.lower() or "google_drive" in func_name.lower():
                             service_name = "Google Drive"
+                        elif "gcalendar" in func_name.lower() or "google_calendar" in func_name.lower():
+                            service_name = "Google Calendar"
                         else:
-                            service_name = "cloud storage"
+                            service_name = "cloud service"
                         
                         # Determine action type
                         if "get_file_download_link" in func_name or "download" in func_name:
@@ -211,13 +371,19 @@ class MistralAgent:
                             formatted_response = f"I'm searching for '{query}' in your {service_name} account..."
                         elif "share" in func_name:
                             formatted_response = f"I'll prepare to share '{query}' from your {service_name} account..."
+                        elif "create_calendar" in func_name:
+                            calendar_name = args.get("calendar_name", "new calendar")
+                            formatted_response = f"I'm creating a new calendar '{calendar_name}' in your Google Calendar account..."
+                        elif "add_event" in func_name or "create_event" in func_name:
+                            summary = args.get("summary", "event")
+                            formatted_response = f"I'm adding the event '{summary}' to your Google Calendar..."
                         elif "create" in func_name:
                             formatted_response = f"I'll create '{query}' in your {service_name} account..."
                         elif "delete" in func_name:
                             formatted_response = f"I'll prepare to delete '{query}' from your {service_name} account..."
-                        elif "list" in func_name:
+                        elif "list" in func_name or "get_events" in func_name:
                             path = args.get("path", "root folder")
-                            formatted_response = f"I'll list the contents of '{path}' in your {service_name} account..."
+                            formatted_response = f"I'll list the contents in your {service_name} account..."
                         elif "upload" in func_name:
                             file_name = args.get("file_name", "your file")
                             formatted_response = f"I'm uploading '{file_name}' to your {service_name} account..."
@@ -236,7 +402,8 @@ class MistralAgent:
                 "Please use the `!authorize",
                 "not authorized",
                 "authorization required",
-                "Google Drive authorization has expired"
+                "Google Drive authorization has expired",
+                "Google Calendar authorization has expired"
             ]
             
             if any(phrase in response.content for phrase in auth_error_phrases):

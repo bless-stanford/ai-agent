@@ -7,7 +7,9 @@ from agent import MistralAgent
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
 from services.google_drive_service import GoogleDriveService
+from services.google_calendar_service import GoogleCalendarService
 from server import start_server 
+from datetime import datetime, timedelta
 
 PREFIX = "!"
 
@@ -34,6 +36,7 @@ token = os.getenv("DISCORD_TOKEN")
 box_service = BoxService()
 dropbox_service = DropboxService()
 google_drive_service = GoogleDriveService()
+google_calendar_service = GoogleCalendarService()
 
 async def send_split_message(message: discord.Message, response: str | list[str]):
     """
@@ -233,6 +236,23 @@ async def authorize_gdrive(ctx):
         logger.error(error_msg)
         await ctx.send(error_msg[:1900])
 
+@bot.command(name="authorize-gcalendar", help="Authorize the bot to access your Google Calendar account")
+async def authorize_gcalendar(ctx):
+    """
+    Sends a Google Calendar authorization link to the user via DM.
+    """
+    try:
+        # Get authorization URL for the user
+        auth_url = await google_calendar_service.get_authorization_url(str(ctx.author.id))
+        
+        # Send the URL as a DM to the user
+        await ctx.author.send(f"Please authorize access to your Google Calendar account by clicking this link: {auth_url}")
+        await ctx.send("I've sent you a DM with the authorization link!")
+    except Exception as e:
+        error_msg = f"Error generating Google Calendar authorization link: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
 @bot.command(name="gdrive-upload", help="Upload a file to Google Drive")
 async def gdrive_upload(ctx):
     """
@@ -276,6 +296,244 @@ async def gdrive_upload(ctx):
         if os.path.exists(file_path):
             os.remove(file_path)
 
+@bot.command(name="gcalendar-create", help="Create a new calendar")
+async def gcalendar_create(ctx, *, calendar_name=None):
+    """
+    Creates a new calendar in the user's Google Calendar account.
+    
+    Usage: !gcalendar-create My New Calendar
+    """
+    if not calendar_name:
+        await ctx.send("Please provide a name for the calendar.\nUsage: `!gcalendar-create My New Calendar`")
+        return
+    
+    try:
+        calendar_id = await google_calendar_service.create_calendar(str(ctx.author.id), calendar_name)
+        
+        await ctx.send(f"Calendar created successfully!\nName: {calendar_name}\nID: {calendar_id}")
+    except Exception as e:
+        error_msg = f"Error creating calendar: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
+@bot.command(name="gcalendar-add-event", help="Add an event to your Google Calendar")
+async def gcalendar_add_event(ctx, *, event_data=None):
+    """
+    Adds an event to the user's Google Calendar.
+    
+    Usage: !gcalendar-add-event title | description | start_time | end_time | location
+    Example: !gcalendar-add-event Team Meeting | Weekly sync | 2024-03-15T14:00:00 | 2024-03-15T15:00:00 | Conference Room
+    """
+    if not event_data:
+        await ctx.send("Please provide event details in this format:\n`!gcalendar-add-event title | description | start_time | end_time | location`\n\nExample: `!gcalendar-add-event Team Meeting | Weekly sync | 2024-03-15T14:00:00 | 2024-03-15T15:00:00 | Conference Room`")
+        return
+    
+    try:
+        # Parse event data
+        parts = event_data.split('|')
+        if len(parts) < 4:
+            await ctx.send("Please provide at least title, description, start time, and end time, separated by '|'")
+            return
+        
+        title = parts[0].strip()
+        description = parts[1].strip()
+        start_time = parts[2].strip()
+        end_time = parts[3].strip()
+        location = parts[4].strip() if len(parts) > 4 else ""
+        
+        # Create event object
+        event = {
+            "summary": title,
+            "description": description,
+            "location": location,
+            "start": {
+                "dateTime": start_time,
+                "timeZone": "UTC"
+            },
+            "end": {
+                "dateTime": end_time,
+                "timeZone": "UTC"
+            }
+        }
+        
+        # Add the event
+        result = await google_calendar_service.add_event(str(ctx.author.id), event)
+        
+        # Create embed for nice display
+        embed = discord.Embed(
+            title="Event Added to Google Calendar",
+            description=description,
+            color=discord.Color.green()
+        )
+        
+        embed.add_field(name="Title", value=title, inline=False)
+        embed.add_field(name="Start", value=start_time, inline=True)
+        embed.add_field(name="End", value=end_time, inline=True)
+        if location:
+            embed.add_field(name="Location", value=location, inline=False)
+            
+        event_link = f"https://calendar.google.com/calendar/event?eid={result.get('id', 'unknown')}"
+        embed.add_field(name="Calendar Link", value=f"[Open in Google Calendar]({event_link})", inline=False)
+        
+        await ctx.send(embed=embed)
+    except Exception as e:
+        error_msg = f"Error adding event to Google Calendar: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
+@bot.command(name="gcalendar-events", help="Get your upcoming events from Google Calendar")
+async def gcalendar_events(ctx, days: int = 7):
+    """
+    Gets the user's upcoming events from Google Calendar.
+    
+    Args:
+        days: Number of days to look ahead (default: 7)
+    
+    Usage: !gcalendar-events 
+    Alternative: !gcalendar-events 14
+    """
+    try:
+        # Calculate date range
+        start_date = datetime.utcnow()
+        end_date = start_date + timedelta(days=days)
+        
+        # Get events
+        events = await google_calendar_service.get_events(
+            str(ctx.author.id),
+            start_date,
+            end_date,
+            max_results=10
+        )
+        
+        if not events:
+            await ctx.send(f"No events found in the next {days} days.")
+            return
+        
+        # Create an embed for nice formatting
+        embed = discord.Embed(
+            title=f"Your Calendar: Next {days} Days",
+            description=f"Showing your upcoming events from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
+            color=discord.Color.blue()
+        )
+        
+        # Add events to the embed
+        for event in events:
+            # Get event details
+            title = event.get('summary', 'No title')
+            
+            # Format start time
+            start = event.get('start', {})
+            if 'dateTime' in start:
+                start_time = datetime.fromisoformat(start['dateTime'].replace('Z', '+00:00'))
+                start_str = start_time.strftime('%Y-%m-%d %H:%M')
+            elif 'date' in start:
+                start_str = f"{start['date']} (All day)"
+            else:
+                start_str = "Unknown time"
+            
+            # Format location if available
+            location = event.get('location', '')
+            location_str = f"\nLocation: {location}" if location else ""
+            
+            # Add to embed
+            embed.add_field(
+                name=title,
+                value=f"When: {start_str}{location_str}",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+    except Exception as e:
+        error_msg = f"Error retrieving events from Google Calendar: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
+@bot.command(name="gcalendar-delete", help="Delete an event from your Google Calendar")
+async def gcalendar_delete(ctx, *, event_query=None):
+    """
+    Deletes an event from the user's Google Calendar by searching for it.
+    
+    Usage: !gcalendar-delete Team Meeting
+    Alternative: !gcalendar-delete [event-id]
+    """
+    if not event_query:
+        await ctx.send("Please provide an event title or event ID to delete.\nUsage: `!gcalendar-delete Team Meeting`")
+        return
+    
+    try:
+        result = await google_calendar_service.delete_event(str(ctx.author.id), event_query)
+        await ctx.send(result)
+    except Exception as e:
+        error_msg = f"Error deleting event: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
+@bot.command(name="gcalendar-update", help="Update an existing event in your Google Calendar")
+async def gcalendar_update(ctx, event_id=None, *, event_data=None):
+    """
+    Updates an existing event in the user's Google Calendar.
+    
+    Usage: !gcalendar-update event_id title | description | start_time | end_time
+    Example: !gcalendar-update abc123 Updated Meeting | New description | 2024-03-15T15:00:00 | 2024-03-15T16:00:00
+    """
+    if not event_id or not event_data:
+        await ctx.send("Please provide both an event ID and updated event details.\nUsage: `!gcalendar-update event_id title | description | start_time | end_time`")
+        return
+    
+    try:
+        # Parse event data
+        parts = event_data.split('|')
+        if len(parts) < 4:
+            await ctx.send("Please provide at least title, description, start time, and end time, separated by '|'")
+            return
+        
+        title = parts[0].strip()
+        description = parts[1].strip()
+        start_time = parts[2].strip()
+        end_time = parts[3].strip()
+        
+        result = await google_calendar_service.update_event(
+            str(ctx.author.id),
+            event_id,
+            {
+                "summary": title,
+                "description": description,
+                "start": {
+                    "dateTime": start_time,
+                    "timeZone": "UTC"
+                },
+                "end": {
+                    "dateTime": end_time,
+                    "timeZone": "UTC"
+                }
+            }
+        )
+        
+        await ctx.send(f"Event updated successfully!\nTitle: {result.get('summary')}\nID: {result.get('id')}")
+    except Exception as e:
+        error_msg = f"Error updating event: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
+@bot.command(name="gcalendar-share", help="Share a calendar event with another user")
+async def gcalendar_share(ctx, event_id=None, *, email=None):
+    """
+    Shares a calendar event with another user by adding them as an attendee.
+    
+    Usage: !gcalendar-share event_id email@example.com
+    """
+    if not event_id or not email:
+        await ctx.send("Please provide both an event ID and an email to share with.\nUsage: `!gcalendar-share event_id email@example.com`")
+        return
+    
+    try:
+        result = await google_calendar_service.share_event(str(ctx.author.id), event_id, email)
+        await ctx.send(f"Event shared successfully with {email}!")
+    except Exception as e:
+        error_msg = f"Error sharing event: {str(e)}"
+        logger.error(error_msg)
+        await ctx.send(error_msg[:1900])
+
 @bot.command(name="cloud-status", help="Check your cloud service connections")
 async def cloud_status(ctx):
     """
@@ -288,7 +546,7 @@ async def cloud_status(ctx):
     )
     
     embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
-    embed.set_footer(text="Use !authorize-box or !authorize-dropbox to connect services")
+    embed.set_footer(text="Use !authorize-* commands to connect services")
     embed.timestamp = discord.utils.utcnow()
     
     # Check Box connection
@@ -356,6 +614,29 @@ async def cloud_status(ctx):
     except Exception as e:
         embed.add_field(
             name="Google Drive Status", 
+            value=f"⚠️ Error checking connection\n```{str(e)}```", 
+            inline=False
+        )
+        
+    # Check Google Calendar connection
+    try:
+        # Try to load the token to see if the user is authenticated
+        gcalendar_token = await google_calendar_service._load_token(str(ctx.author.id))
+        if gcalendar_token:
+            embed.add_field(
+                name="Google Calendar Status", 
+                value="✅ Connected", 
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="Google Calendar Status", 
+                value="❌ Not connected\n*Use !authorize-gcalendar to connect*", 
+                inline=False
+            )
+    except Exception as e:
+        embed.add_field(
+            name="Google Calendar Status", 
             value=f"⚠️ Error checking connection\n```{str(e)}```", 
             inline=False
         )
