@@ -2,22 +2,46 @@ from semantic_kernel.kernel import Kernel
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
 from services.google_drive_service import GoogleDriveService
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 from services.google_calendar_service import GoogleCalendarService
 from plugins.box_plugin import BoxPlugins
 from plugins.dropbox_plugin import DropboxPlugins
 from plugins.google_drive_plugin import GoogleDrivePlugins
 from plugins.google_calendar_plugin import GoogleCalendarPlugins
+=======
+from services.gmail_service import GmailService
+from plugins.box_plugin import BoxPlugins
+from plugins.dropbox_plugin import DropboxPlugins
+from plugins.google_drive_plugin import GoogleDrivePlugins
+from plugins.gmail_plugin import GmailPlugins
+>>>>>>> Stashed changes
+=======
+from services.gmail_service import GmailService
+from plugins.box_plugin import BoxPlugins
+from plugins.dropbox_plugin import DropboxPlugins
+from plugins.google_drive_plugin import GoogleDrivePlugins
+from plugins.gmail_plugin import GmailPlugins
+>>>>>>> Stashed changes
 import logging
 
 logger = logging.getLogger("cloud_plugin_manager")
 
 class CloudPluginManager:
     """
-    Manager for cloud storage plugins to use with Semantic Kernel.
-    Consolidates Box, Dropbox, and Google Drive plugins into a single interface.
+    Manager for cloud storage and email plugins to use with Semantic Kernel.
+    Consolidates Box, Dropbox, Google Drive, and Gmail plugins into a single interface.
     """
     
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
     def __init__(self, box_service=None, dropbox_service=None, google_drive_service=None, google_calendar_service=None):
+=======
+    def __init__(self, box_service=None, dropbox_service=None, google_drive_service=None, gmail_service=None):
+>>>>>>> Stashed changes
+=======
+    def __init__(self, box_service=None, dropbox_service=None, google_drive_service=None, gmail_service=None):
+>>>>>>> Stashed changes
         """
         Initialize the cloud plugin manager with service instances.
         If no services are provided, new ones will be created.
@@ -26,23 +50,47 @@ class CloudPluginManager:
             box_service: BoxService instance or None
             dropbox_service: DropboxService instance or None
             google_drive_service: GoogleDriveService instance or None
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
             google_calendar_service: GoogleCalendarService instance or None
+=======
+            gmail_service: GmailService instance or None
+>>>>>>> Stashed changes
+=======
+            gmail_service: GmailService instance or None
+>>>>>>> Stashed changes
         """
         self.box_service = box_service or BoxService()
         self.dropbox_service = dropbox_service or DropboxService()
         self.google_drive_service = google_drive_service or GoogleDriveService()
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         self.google_calendar_service = google_calendar_service or GoogleCalendarService()
         
+=======
+        self.gmail_service = gmail_service or GmailService()
+>>>>>>> Stashed changes
+=======
+        self.gmail_service = gmail_service or GmailService()
+>>>>>>> Stashed changes
         
         # Initialize plugin instances
         self.box_plugins = BoxPlugins(self.box_service)
         self.dropbox_plugins = DropboxPlugins(self.dropbox_service)
         self.google_drive_plugins = GoogleDrivePlugins(self.google_drive_service)
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         self.google_calendar_plugins = GoogleCalendarPlugins(self.google_calendar_service)
+=======
+        self.gmail_plugins = GmailPlugins(self.gmail_service)
+>>>>>>> Stashed changes
+=======
+        self.gmail_plugins = GmailPlugins(self.gmail_service)
+>>>>>>> Stashed changes
     
     def register_plugins(self, kernel: Kernel) -> Kernel:
         """
-        Register all cloud storage plugins with the given kernel.
+        Register all cloud storage and email plugins with the given kernel.
         
         Args:
             kernel: The Semantic Kernel instance
@@ -67,6 +115,14 @@ class CloudPluginManager:
             kernel.add_plugin(self.google_calendar_plugins, "gcalendar")
             logger.info("Google Calendar plugins registered with kernel")
             
+            # Register Gmail plugins
+            kernel.add_plugin(self.gmail_plugins, "gmail")
+            logger.info("Gmail plugins registered with kernel")
+            
+            # Register Gmail plugins
+            kernel.add_plugin(self.gmail_plugins, "gmail")
+            logger.info("Gmail plugins registered with kernel")
+            
             return kernel
         except Exception as e:
             logger.error(f"Error registering cloud plugins: {str(e)}")
@@ -79,7 +135,7 @@ class CloudPluginManager:
         Returns:
             str: Formatted text with plugin descriptions
         """
-        descriptions = "# Available Cloud Storage Plugins\n\n"
+        descriptions = "# Available Cloud Storage and Email Plugins\n\n"
         
         # Box plugins
         descriptions += "## Box Plugins\n"
@@ -111,7 +167,38 @@ class CloudPluginManager:
         descriptions += "- `gdrive.get_file_download_link`: Get a download link for a Google Drive file\n"
         descriptions += "- `gdrive.get_file_view_link`: Get a view link for a Google Drive file\n"
         descriptions += "- `gdrive.share_file`: Share a Google Drive file with another user\n"
-        descriptions += "- `gdrive.move_file`: Move a file to a different folder in Google Drive\n"
+        descriptions += "- `gdrive.move_file`: Move a file to a different folder in Google Drive\n\n"
+<<<<<<< Updated upstream
+=======
+        
+        # Gmail plugins
+        descriptions += "## Gmail Plugins\n"
+        descriptions += "Use these to interact with your Gmail account:\n"
+        descriptions += "- `gmail.get_recent_emails`: Retrieve recent emails from your inbox\n"
+        descriptions += "- `gmail.search_emails`: Search for emails using Gmail query syntax\n"
+        descriptions += "- `gmail.get_email`: Retrieve and display a specific email by ID\n"
+        descriptions += "- `gmail.mark_as_read`: Mark an email as read\n"
+        descriptions += "- `gmail.send_email`: Send an email with optional attachments\n"
+        descriptions += "- `gmail.download_attachments`: Download attachments from an email\n"
+        descriptions += "- `gmail.compose_email`: Create a well-formatted email template\n"
+        descriptions += "- `gmail.search_and_summarize`: Generate AI summaries of email search results\n"
+        descriptions += "- `gmail.get_authorization_url`: Get the authorization URL for Gmail\n"
+        descriptions += "- `gmail.revoke_access`: Revoke the application's access to Gmail\n"
+>>>>>>> Stashed changes
+        
+        # Gmail plugins
+        descriptions += "## Gmail Plugins\n"
+        descriptions += "Use these to interact with your Gmail account:\n"
+        descriptions += "- `gmail.get_recent_emails`: Retrieve recent emails from your inbox\n"
+        descriptions += "- `gmail.search_emails`: Search for emails using Gmail query syntax\n"
+        descriptions += "- `gmail.get_email`: Retrieve and display a specific email by ID\n"
+        descriptions += "- `gmail.mark_as_read`: Mark an email as read\n"
+        descriptions += "- `gmail.send_email`: Send an email with optional attachments\n"
+        descriptions += "- `gmail.download_attachments`: Download attachments from an email\n"
+        descriptions += "- `gmail.compose_email`: Create a well-formatted email template\n"
+        descriptions += "- `gmail.search_and_summarize`: Generate AI summaries of email search results\n"
+        descriptions += "- `gmail.get_authorization_url`: Get the authorization URL for Gmail\n"
+        descriptions += "- `gmail.revoke_access`: Revoke the application's access to Gmail\n"
         
         # Google Calendar plugins
         descriptions += "## Google Calendar Plugins\n"
@@ -128,11 +215,11 @@ class CloudPluginManager:
     
     def update_user_context(self, kernel: Kernel, user_id: str) -> None:
         """
-        Update the kernel context with user ID for cloud storage operations.
+        Update the kernel context with user ID for cloud storage and email operations.
         
         Args:
             kernel: The Semantic Kernel instance
-            user_id: The user's ID for cloud storage authentication
+            user_id: The user's ID for authentication
         """
         try:
             # Set user_id in variables

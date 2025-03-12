@@ -5,6 +5,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from agent import MistralAgent
 from services.box_service import BoxService
+from services.gmail_service import GmailService
 from services.dropbox_service import DropboxService
 from services.google_drive_service import GoogleDriveService
 from services.google_calendar_service import GoogleCalendarService
@@ -34,6 +35,7 @@ token = os.getenv("DISCORD_TOKEN")
 
 # Initialize cloud service instances
 box_service = BoxService()
+gmail_service = GmailService()
 dropbox_service = DropboxService()
 google_drive_service = GoogleDriveService()
 google_calendar_service = GoogleCalendarService()
@@ -78,14 +80,17 @@ async def on_message(message: discord.Message):
     """
     Called when a message is sent in any channel the bot can see.
     """
-    # Process commands first
-    await bot.process_commands(message)
-
     # Ignore messages from self or other bots to prevent infinite loops
-    if message.author.bot or message.content.startswith(PREFIX):
+    if message.author.bot:
         return
-
-    # Log the incoming message
+    
+    # If the message starts with the command prefix, only process it as a command
+    # and don't try to handle it with the agent
+    if message.content.startswith(PREFIX):
+        await bot.process_commands(message)
+        return
+    
+    # Only process non-command messages with the agent
     logger.info(f"Processing message from {message.author}: {message.content}")
     
     try:
@@ -236,20 +241,21 @@ async def authorize_gdrive(ctx):
         logger.error(error_msg)
         await ctx.send(error_msg[:1900])
 
-@bot.command(name="authorize-gcalendar", help="Authorize the bot to access your Google Calendar account")
-async def authorize_gcalendar(ctx):
+    
+@bot.command(name="authorize-gmail", help="Authorize the bot to access your Gmail account")
+async def authorize_gmail(ctx):
     """
-    Sends a Google Calendar authorization link to the user via DM.
+    Sends a Gmail authorization link to the user via DM.
     """
     try:
         # Get authorization URL for the user
-        auth_url = await google_calendar_service.get_authorization_url(str(ctx.author.id))
+        auth_url = await gmail_service.get_authorization_url(str(ctx.author.id))
         
         # Send the URL as a DM to the user
-        await ctx.author.send(f"Please authorize access to your Google Calendar account by clicking this link: {auth_url}")
+        await ctx.author.send(f"Please authorize access to your Gmail account by clicking this link: {auth_url}")
         await ctx.send("I've sent you a DM with the authorization link!")
     except Exception as e:
-        error_msg = f"Error generating Google Calendar authorization link: {str(e)}"
+        error_msg = f"Error generating Gmail authorization link: {str(e)}"
         logger.error(error_msg)
         await ctx.send(error_msg[:1900])
 
@@ -617,26 +623,26 @@ async def cloud_status(ctx):
             value=f"⚠️ Error checking connection\n```{str(e)}```", 
             inline=False
         )
-        
-    # Check Google Calendar connection
+
+    # Check Gmail connection
     try:
         # Try to load the token to see if the user is authenticated
-        gcalendar_token = await google_calendar_service._load_token(str(ctx.author.id))
-        if gcalendar_token:
+        gmail_token = await gmail_service._load_token(str(ctx.author.id))
+        if gmail_token:
             embed.add_field(
-                name="Google Calendar Status", 
+                name="Gmail Status", 
                 value="✅ Connected", 
                 inline=False
             )
         else:
             embed.add_field(
-                name="Google Calendar Status", 
-                value="❌ Not connected\n*Use !authorize-gcalendar to connect*", 
+                name="Gmail Status", 
+                value="❌ Not connected\n*Use !authorize-gmail to connect*", 
                 inline=False
             )
     except Exception as e:
         embed.add_field(
-            name="Google Calendar Status", 
+            name="Gmail Status", 
             value=f"⚠️ Error checking connection\n```{str(e)}```", 
             inline=False
         )

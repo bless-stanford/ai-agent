@@ -4,7 +4,15 @@ import uvicorn
 from services.box_service import BoxService
 from services.dropbox_service import DropboxService
 from services.google_drive_service import GoogleDriveService
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 from services.google_calendar_service import GoogleCalendarService
+=======
+from services.gmail_service import GmailService
+>>>>>>> Stashed changes
+=======
+from services.gmail_service import GmailService
+>>>>>>> Stashed changes
 from helpers.token_helpers import TokenEncryptionHelper
 import asyncio
 import logging
@@ -17,7 +25,15 @@ app = FastAPI()
 box_service = BoxService()
 dropbox_service = DropboxService()
 google_drive_service = GoogleDriveService()
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 google_calendar_service = GoogleCalendarService()
+=======
+gmail_service = GmailService()
+>>>>>>> Stashed changes
+=======
+gmail_service = GmailService()
+>>>>>>> Stashed changes
 
 # This will be set from bot.py
 bot = None
@@ -83,7 +99,15 @@ def get_success_html(service_name):
 
 @app.get("/")
 async def root():
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
     return {"message": "OAuth Callback Server for Box, Dropbox, Google Drive, and Google Calendar"}
+=======
+    return {"message": "OAuth Callback Server for Box, Dropbox, Google Drive, and Gmail"}
+>>>>>>> Stashed changes
+=======
+    return {"message": "OAuth Callback Server for Box, Dropbox, Google Drive, and Gmail"}
+>>>>>>> Stashed changes
 
 @app.get("/box/callback")
 async def box_callback(code: str, state: str):
@@ -175,26 +199,57 @@ async def gdrive_callback(code: str, state: str):
         logger.error(f"Error in Google Drive callback: {str(e)}")
         return {"error": str(e)}
 
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 @app.get("/gcalendar/callback")
 async def gcalendar_callback(code: str, state: str):
     """
     Handle the OAuth callback from Google Calendar.
     
     This endpoint receives the authorization code from Google Calendar after a user
+=======
+=======
+>>>>>>> Stashed changes
+@app.get("/gmail/callback")
+async def gmail_callback(code: str, state: str):
+    """
+    Handle the OAuth callback from Gmail.
+    
+    This endpoint receives the authorization code from Gmail after a user
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
     authorizes the application. It exchanges the code for access and 
     refresh tokens, stores them securely, and notifies the user.
     """
     try:
         # Get user ID from state
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         user_id = TokenEncryptionHelper.decrypt_token(state, google_calendar_service.encryption_key)
         logger.info(f"Received Google Calendar callback for user {user_id}")
         
         # Handle the callback - this stores the tokens
         await google_calendar_service.handle_auth_callback(state, code)
+=======
+=======
+>>>>>>> Stashed changes
+        user_id = TokenEncryptionHelper.decrypt_token(state, gmail_service.encryption_key)
+        logger.info(f"Received Gmail callback for user {user_id}")
+        
+        # Handle the callback - this stores the tokens
+        await gmail_service.handle_auth_callback(state, code)
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
         
         # Notify the user through Discord
         if bot:
             # Schedule the notification in the bot's event loop
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
             asyncio.run_coroutine_threadsafe(notify_user(user_id, "Google Calendar"), bot.loop)
         
         # Use the reusable HTML template
@@ -203,6 +258,21 @@ async def gcalendar_callback(code: str, state: str):
         return HTMLResponse(content=html_content)
     except Exception as e:
         logger.error(f"Error in Google Calendar callback: {str(e)}")
+=======
+=======
+>>>>>>> Stashed changes
+            asyncio.run_coroutine_threadsafe(notify_user(user_id, "Gmail"), bot.loop)
+        
+        # Use the reusable HTML template
+        html_content = get_success_html("Gmail")
+        
+        return HTMLResponse(content=html_content)
+    except Exception as e:
+        logger.error(f"Error in Gmail callback: {str(e)}")
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
         return {"error": str(e)}
 
 async def notify_user(user_id, service_name):
