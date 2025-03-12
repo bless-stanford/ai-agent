@@ -259,7 +259,7 @@ async def notify_user(user_id, service_name):
 
 def start_server(bot_instance=None):
     """
-    Start the FastAPI server using the port provided by Azure (if available).
+    Start the FastAPI server using the port provided by Azure (if available)
     """
     port = int(os.environ.get("PORT", 8000))
     host = "0.0.0.0"
