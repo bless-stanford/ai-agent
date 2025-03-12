@@ -647,6 +647,29 @@ async def cloud_status(ctx):
             inline=False
         )
     
+    # Check Google Calendar connection
+    try:
+        # Try to load the token to see if the user is authenticated
+        gcalendar_token = await google_calendar_service._load_token(str(ctx.author.id))
+        if gcalendar_token:
+            embed.add_field(
+                name="Google Calendar Status", 
+                value="✅ Connected", 
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="Google Calendar Status", 
+                value="❌ Not connected\n*Use !authorize-gcalendar to connect*", 
+                inline=False
+            )
+    except Exception as e:
+        embed.add_field(
+            name="Google Calendar Status", 
+            value=f"⚠️ Error checking connection\n```{str(e)}```", 
+            inline=False
+        )
+
     await ctx.send(embed=embed)
 
 # Start the web server in the background
